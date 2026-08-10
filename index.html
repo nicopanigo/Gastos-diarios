@@ -16,6 +16,7 @@
     --yellow:#eab308;
     --red:#ef4444;
     --accent:#6366f1;
+    --pareja:#ec4899;
     --border:#334155;
   }
   *{box-sizing:border-box;}
@@ -148,6 +149,11 @@
     text-transform:uppercase;
     letter-spacing:0.03em;
   }
+  .section-hint{
+    font-size:0.78rem;
+    color:var(--muted);
+    margin:-8px 0 12px;
+  }
   .day-group{margin-bottom:14px;}
   .day-group h3{
     font-size:0.85rem;
@@ -166,7 +172,18 @@
   }
   .expense-info{display:flex;flex-direction:column;}
   .expense-desc{font-weight:600;font-size:0.95rem;}
+  .expense-tags{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap;}
   .expense-cat{font-size:0.78rem;color:var(--muted);}
+  .owner-badge{
+    font-size:0.72rem;
+    padding:2px 7px;
+    border-radius:999px;
+    background:var(--card);
+    color:var(--muted);
+  }
+  .owner-badge.owner-mio{color:var(--accent);}
+  .owner-badge.owner-pareja{color:var(--pareja);}
+  .owner-badge.owner-compartido{color:var(--green);}
   .expense-amount{font-weight:700;font-size:1rem;white-space:nowrap;margin-left:10px;}
   .delete-btn{
     background:none;
@@ -326,6 +343,100 @@
     background:var(--accent);
     border-radius:999px;
   }
+  .cat-summary-row{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    background:var(--card2);
+    border-radius:10px;
+    padding:12px;
+    margin-bottom:8px;
+  }
+  .cat-summary-rank{
+    font-size:1.1rem;
+    width:24px;
+    text-align:center;
+    flex-shrink:0;
+    margin-top:1px;
+  }
+  .cat-summary-body{flex:1;min-width:0;}
+  .cat-summary-top{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.85rem;
+    margin-bottom:5px;
+  }
+  .cat-summary-top span:first-child{
+    font-weight:600;
+  }
+  .cat-summary-top span:last-child{
+    color:var(--muted);
+  }
+  .cat-summary-meta{
+    display:flex;
+    justify-content:space-between;
+    font-size:0.75rem;
+    margin-top:6px;
+    color:var(--muted);
+  }
+  .delta-up{color:var(--red);}
+  .delta-down{color:var(--green);}
+  .delta-flat{color:var(--muted);}
+  .catbudget-grid{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .catbudget-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .catbudget-row label{
+    flex:1;
+    font-size:0.85rem;
+    color:var(--text);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .catbudget-row input{
+    width:130px;
+  }
+  form.add-fixed{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-bottom:16px;
+    padding-bottom:16px;
+    border-bottom:1px solid var(--border);
+  }
+  .fixed-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--card2);
+    border-radius:10px;
+    padding:12px;
+    margin-bottom:8px;
+  }
+  .fixed-row.is-paused{opacity:0.55;}
+  .fixed-info{flex:1;min-width:0;}
+  .fixed-desc{font-weight:600;font-size:0.9rem;}
+  .fixed-meta{font-size:0.78rem;color:var(--muted);margin-top:2px;}
+  .fixed-actions{display:flex;align-items:center;gap:6px;}
+  .toggle-btn{
+    background:none;
+    border:1px solid var(--border);
+    color:var(--muted);
+    border-radius:8px;
+    font-size:0.75rem;
+    padding:6px 8px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .toggle-btn.is-active{color:var(--green);border-color:var(--green);}
+  .month-label
   #toast{
     position:fixed;
     bottom:20px;
@@ -395,8 +506,40 @@
         </select>
         <input type="date" id="dateInput">
       </div>
+      <select id="ownerInput">
+        <option value="Mio">🙂 Mío</option>
+        <option value="Pareja">💜 Pareja</option>
+        <option value="Compartido" selected>🤝 Compartido</option>
+      </select>
       <button type="submit" class="primary">Agregar gasto</button>
     </form>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Gastos fijos</h2>
+    <div class="section-hint">Se cargan solos cada mes (alquiler, streaming, etc.)</div>
+    <form class="add-fixed" id="fixedForm">
+      <input type="number" inputmode="decimal" step="0.01" min="0.01" id="fixedAmountInput" placeholder="Monto ($)" required>
+      <input type="text" id="fixedDescInput" placeholder="Descripción (ej: alquiler)" required maxlength="60">
+      <div class="row2">
+        <select id="fixedCatInput">
+          <option value="Comida">🍔 Comida</option>
+          <option value="Transporte">🚗 Transporte</option>
+          <option value="Ocio">🎉 Ocio</option>
+          <option value="Casa" selected>🏠 Casa</option>
+          <option value="Salud">💊 Salud</option>
+          <option value="Otros">📦 Otros</option>
+        </select>
+        <input type="number" id="fixedDayInput" min="1" max="31" placeholder="Día del mes (1-31)" required>
+      </div>
+      <select id="fixedOwnerInput">
+        <option value="Mio">🙂 Mío</option>
+        <option value="Pareja">💜 Pareja</option>
+        <option value="Compartido" selected>🤝 Compartido</option>
+      </select>
+      <button type="submit" class="primary">Agregar gasto fijo</button>
+    </form>
+    <div id="fixedList"></div>
   </div>
 
   <div class="card">
@@ -412,6 +555,24 @@
   <div class="card">
     <h2 class="section-title">Historial por mes</h2>
     <div id="monthlyHistory"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Presupuesto por categoría</h2>
+    <div class="section-hint">Opcional: definí un tope por categoría para este mes</div>
+    <div class="catbudget-grid" id="catBudgetGrid"></div>
+    <button class="primary" id="saveCatBudgetsBtn" style="margin-top:14px;">Guardar topes</button>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Gastos por categoría</h2>
+    <div id="categorySummary"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Gastos compartidos</h2>
+    <div class="section-hint">Cuánto puso cada uno este mes</div>
+    <div id="sharedSummary"></div>
   </div>
 
 </div>
@@ -434,6 +595,16 @@
   "use strict";
 
   var STORAGE_KEY = "gastos-app-v1";
+  var CATEGORIES = ["Comida","Transporte","Ocio","Casa","Salud","Otros"];
+  var categoryEmoji = {
+    "Comida":"🍔","Transporte":"🚗","Ocio":"🎉","Casa":"🏠","Salud":"💊","Otros":"📦"
+  };
+  var ownerLabels = {
+    "Mio":"🙂 Mío","Pareja":"💜 Pareja","Compartido":"🤝 Compartido"
+  };
+  var ownerBadgeClass = {
+    "Mio":"owner-mio","Pareja":"owner-pareja","Compartido":"owner-compartido"
+  };
 
   function getTodayISO(){
     var d = new Date();
@@ -445,18 +616,27 @@
     return dateStr.slice(0,7); // YYYY-MM
   }
 
+  function emptyData(){
+    return { budgets:{}, expenses:[], categoryBudgets:{}, recurring:[] };
+  }
+
   function loadData(){
     try{
       var raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return { budgets:{}, expenses:[] };
+      if(!raw) return emptyData();
       var parsed = JSON.parse(raw);
-      if(!parsed || typeof parsed !== "object") return { budgets:{}, expenses:[] };
-      if(!parsed.budgets) parsed.budgets = {};
+      if(!parsed || typeof parsed !== "object") return emptyData();
+      if(!parsed.budgets || typeof parsed.budgets !== "object") parsed.budgets = {};
       if(!Array.isArray(parsed.expenses)) parsed.expenses = [];
+      if(!parsed.categoryBudgets || typeof parsed.categoryBudgets !== "object") parsed.categoryBudgets = {};
+      if(!Array.isArray(parsed.recurring)) parsed.recurring = [];
+      parsed.expenses.forEach(function(e){
+        if(!e.owner) e.owner = "Compartido";
+      });
       return parsed;
     }catch(e){
       console.error("Error leyendo datos guardados, reiniciando.", e);
-      return { budgets:{}, expenses:[] };
+      return emptyData();
     }
   }
 
@@ -507,6 +687,17 @@
     saveData(data);
   }
 
+  function getCategoryBudget(monthKey, cat){
+    var m = data.categoryBudgets[monthKey];
+    var v = m ? m[cat] : undefined;
+    return (typeof v === "number" && isFinite(v) && v >= 0) ? v : 0;
+  }
+
+  function setCategoryBudget(monthKey, cat, value){
+    if(!data.categoryBudgets[monthKey]) data.categoryBudgets[monthKey] = {};
+    data.categoryBudgets[monthKey][cat] = value;
+  }
+
   function getExpensesForMonth(monthKey){
     return data.expenses.filter(function(e){
       return monthKeyFromDate(e.date) === monthKey;
@@ -535,10 +726,6 @@
     return Object.keys(keys).sort().reverse();
   }
 
-  var categoryEmoji = {
-    "Comida":"🍔","Transporte":"🚗","Ocio":"🎉","Casa":"🏠","Salud":"💊","Otros":"📦"
-  };
-
   function categoryTotals(monthKey){
     var totals = {};
     getExpensesForMonth(monthKey).forEach(function(e){
@@ -549,6 +736,46 @@
       return { category: cat, total: totals[cat] };
     }).sort(function(a,b){ return b.total - a.total; });
   }
+
+  function ownerTotals(monthKey){
+    var totals = { Mio:0, Pareja:0, Compartido:0 };
+    getExpensesForMonth(monthKey).forEach(function(e){
+      var owner = totals.hasOwnProperty(e.owner) ? e.owner : "Compartido";
+      totals[owner] += (typeof e.amount === "number" ? e.amount : 0);
+    });
+    return totals;
+  }
+
+  function generateRecurringForMonth(monthKey){
+    var changed = false;
+    var dim = daysInMonth(monthKey);
+    data.recurring.forEach(function(item){
+      if(!item.active) return;
+      var exists = data.expenses.some(function(e){
+        return e.recurringId === item.id && monthKeyFromDate(e.date) === monthKey;
+      });
+      if(!exists){
+        var day = Math.min(Math.max(parseInt(item.day,10) || 1, 1), dim);
+        var date = monthKey + "-" + String(day).padStart(2,"0");
+        data.expenses.push({
+          id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
+          amount: item.amount,
+          desc: item.desc,
+          category: item.category,
+          owner: item.owner || "Compartido",
+          date: date,
+          createdAt: Date.now(),
+          recurringId: item.id
+        });
+        changed = true;
+      }
+    });
+    if(changed) saveData(data);
+    return changed;
+  }
+
+  // generar instancias del mes actual real al abrir la app
+  generateRecurringForMonth(monthKeyFromDate(getTodayISO()));
 
   var expandedMonths = {};
 
@@ -601,6 +828,10 @@
 
     renderExpenseList();
     renderMonthlyHistory();
+    renderCategoryBudgetForm();
+    renderCategorySummary();
+    renderSharedSummary();
+    renderFixedList();
   }
 
   function renderMonthlyHistory(){
@@ -670,6 +901,161 @@
     });
   }
 
+  function renderCategoryBudgetForm(){
+    var grid = document.getElementById("catBudgetGrid");
+    var html = "";
+    CATEGORIES.forEach(function(cat){
+      var val = getCategoryBudget(currentMonthKey, cat);
+      var emoji = categoryEmoji[cat] || "📦";
+      html += '<div class="catbudget-row">' +
+        '<label for="catbudget-' + cat + '">' + emoji + ' ' + cat + '</label>' +
+        '<input type="number" inputmode="decimal" step="0.01" min="0" id="catbudget-' + cat + '" data-cat="' + cat + '" value="' + (val > 0 ? val : "") + '" placeholder="Sin tope">' +
+      '</div>';
+    });
+    grid.innerHTML = html;
+  }
+
+  var rankEmoji = ["🥇","🥈","🥉"];
+
+  function renderCategorySummary(){
+    var el = document.getElementById("categorySummary");
+    var cats = categoryTotals(currentMonthKey);
+    var spent = totalSpent(currentMonthKey);
+
+    if(cats.length === 0){
+      el.innerHTML = '<div class="empty-state">Todavía no hay gastos este mes para agrupar por categoría.</div>';
+      return;
+    }
+
+    var prevMonthKey = shiftMonthKey(currentMonthKey, -1);
+    var prevTotalsList = categoryTotals(prevMonthKey);
+    var prevTotals = {};
+    prevTotalsList.forEach(function(c){ prevTotals[c.category] = c.total; });
+
+    var html = "";
+    cats.forEach(function(c, i){
+      var shareOfTotal = spent > 0 ? Math.round((c.total / spent) * 100) : 0;
+      var emoji = categoryEmoji[c.category] || "📦";
+      var rank = rankEmoji[i] || (i + 1) + "º";
+      var catBudget = getCategoryBudget(currentMonthKey, c.category);
+
+      var barPct, barColor;
+      if(catBudget > 0){
+        barPct = Math.min(Math.round((c.total / catBudget) * 100), 100);
+        barColor = barPct < 70 ? "var(--green)" : (barPct < 100 ? "var(--yellow)" : "var(--red)");
+      } else {
+        barPct = shareOfTotal;
+        barColor = "var(--accent)";
+      }
+
+      var prevTotal = prevTotals[c.category] || 0;
+      var deltaHtml;
+      if(prevTotal > 0){
+        var deltaPct = Math.round(((c.total - prevTotal) / prevTotal) * 100);
+        if(deltaPct > 0){
+          deltaHtml = '<span class="delta-up">▲ ' + deltaPct + '% vs mes anterior</span>';
+        } else if(deltaPct < 0){
+          deltaHtml = '<span class="delta-down">▼ ' + Math.abs(deltaPct) + '% vs mes anterior</span>';
+        } else {
+          deltaHtml = '<span class="delta-flat">= igual que el mes anterior</span>';
+        }
+      } else {
+        deltaHtml = '<span class="delta-flat">sin gastos el mes anterior</span>';
+      }
+
+      var budgetText = catBudget > 0
+        ? (formatMoney(c.total) + ' de ' + formatMoney(catBudget) + (c.total > catBudget ? ' (superado)' : ''))
+        : (formatMoney(c.total) + ' · ' + shareOfTotal + '% del total');
+
+      html += '<div class="cat-summary-row">' +
+        '<div class="cat-summary-rank">' + rank + '</div>' +
+        '<div class="cat-summary-body">' +
+          '<div class="cat-summary-top"><span>' + emoji + ' ' + escapeHtml(c.category) + '</span><span>' + budgetText + '</span></div>' +
+          '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + barPct + '%;background:' + barColor + ';"></div></div>' +
+          '<div class="cat-summary-meta">' + deltaHtml + '</div>' +
+        '</div>' +
+      '</div>';
+    });
+
+    el.innerHTML = html;
+  }
+
+  function renderSharedSummary(){
+    var el = document.getElementById("sharedSummary");
+    var spent = totalSpent(currentMonthKey);
+    var totals = ownerTotals(currentMonthKey);
+
+    if(spent === 0){
+      el.innerHTML = '<div class="empty-state">Todavía no hay gastos este mes.</div>';
+      return;
+    }
+
+    var order = ["Mio","Pareja","Compartido"];
+    var html = "";
+    order.forEach(function(owner){
+      var total = totals[owner] || 0;
+      var pct = spent > 0 ? Math.round((total / spent) * 100) : 0;
+      html += '<div class="cat-summary-row">' +
+        '<div class="cat-summary-body">' +
+          '<div class="cat-summary-top"><span>' + ownerLabels[owner] + '</span><span>' + formatMoney(total) + ' · ' + pct + '%</span></div>' +
+          '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct + '%;"></div></div>' +
+        '</div>' +
+      '</div>';
+    });
+
+    el.innerHTML = html;
+  }
+
+  function renderFixedList(){
+    var el = document.getElementById("fixedList");
+    if(data.recurring.length === 0){
+      el.innerHTML = '<div class="empty-state">Todavía no cargaste gastos fijos.</div>';
+      return;
+    }
+
+    var html = "";
+    data.recurring.forEach(function(item){
+      var emoji = categoryEmoji[item.category] || "📦";
+      html += '<div class="fixed-row' + (item.active ? '' : ' is-paused') + '" data-id="' + item.id + '">' +
+        '<div class="fixed-info">' +
+          '<div class="fixed-desc">' + emoji + ' ' + escapeHtml(item.desc) + '</div>' +
+          '<div class="fixed-meta">' + formatMoney(item.amount) + ' · día ' + item.day + ' · ' + ownerLabels[item.owner || "Compartido"] + '</div>' +
+        '</div>' +
+        '<div class="fixed-actions">' +
+          '<button class="toggle-btn' + (item.active ? ' is-active' : '') + '" data-action="toggle" data-id="' + item.id + '">' + (item.active ? 'Activo' : 'Pausado') + '</button>' +
+          '<button class="delete-btn" data-action="delete" data-id="' + item.id + '" aria-label="Eliminar fijo">✕</button>' +
+        '</div>' +
+      '</div>';
+    });
+
+    el.innerHTML = html;
+
+    el.querySelectorAll('[data-action="toggle"]').forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-id");
+        var item = data.recurring.find(function(r){ return String(r.id) === String(id); });
+        if(item){
+          item.active = !item.active;
+          if(item.active){
+            generateRecurringForMonth(monthKeyFromDate(getTodayISO()));
+          }
+          saveData(data);
+          render();
+        }
+      });
+    });
+
+    el.querySelectorAll('[data-action="delete"]').forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-id");
+        data.recurring = data.recurring.filter(function(r){ return String(r.id) !== String(id); });
+        saveData(data);
+        render();
+        showToast("Gasto fijo eliminado");
+      });
+    });
+  }
+
   function renderExpenseList(){
     var listEl = document.getElementById("expenseList");
     var monthExpenses = getExpensesForMonth(currentMonthKey).slice().sort(function(a,b){
@@ -695,11 +1081,18 @@
       var label = d.toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" });
       html += '<div class="day-group"><h3>' + label + '</h3>';
       groups[date].forEach(function(e){
+        var owner = e.owner || "Compartido";
+        var ownerClass = ownerBadgeClass[owner] || "owner-compartido";
+        var fixedTag = e.recurringId ? ' <span class="owner-badge">🔁 fijo</span>' : "";
         html += '<div class="expense-item">' +
           '<div class="expense-row-item">' +
             '<div class="expense-info">' +
               '<span class="expense-desc">' + escapeHtml(e.desc) + '</span>' +
-              '<span class="expense-cat">' + escapeHtml(e.category) + '</span>' +
+              '<div class="expense-tags">' +
+                '<span class="expense-cat">' + escapeHtml(e.category) + '</span>' +
+                '<span class="owner-badge ' + ownerClass + '">' + ownerLabels[owner] + '</span>' +
+                fixedTag +
+              '</div>' +
             '</div>' +
           '</div>' +
           '<div class="expense-row-item">' +
@@ -740,6 +1133,7 @@
     var amount = parseFloat(document.getElementById("amountInput").value);
     var desc = document.getElementById("descInput").value.trim();
     var category = document.getElementById("catInput").value;
+    var owner = document.getElementById("ownerInput").value;
     var date = dateInput.value || getTodayISO();
 
     if(!isFinite(amount) || amount <= 0){
@@ -756,6 +1150,7 @@
       amount: Math.round(amount * 100) / 100,
       desc: desc,
       category: category,
+      owner: owner,
       date: date,
       createdAt: Date.now()
     });
@@ -764,11 +1159,56 @@
     document.getElementById("amountInput").value = "";
     document.getElementById("descInput").value = "";
     document.getElementById("catInput").value = "Otros";
+    document.getElementById("ownerInput").value = "Compartido";
     dateInput.value = getTodayISO();
 
     currentMonthKey = monthKeyFromDate(date);
     render();
     showToast("Gasto agregado");
+  });
+
+  // --- Form: gasto fijo ---
+  document.getElementById("fixedForm").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var amount = parseFloat(document.getElementById("fixedAmountInput").value);
+    var desc = document.getElementById("fixedDescInput").value.trim();
+    var category = document.getElementById("fixedCatInput").value;
+    var day = parseInt(document.getElementById("fixedDayInput").value, 10);
+    var owner = document.getElementById("fixedOwnerInput").value;
+
+    if(!isFinite(amount) || amount <= 0){
+      showToast("Ingresá un monto válido");
+      return;
+    }
+    if(!desc){
+      showToast("Ingresá una descripción");
+      return;
+    }
+    if(!isFinite(day) || day < 1 || day > 31){
+      showToast("Ingresá un día del mes válido (1-31)");
+      return;
+    }
+
+    data.recurring.push({
+      id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
+      amount: Math.round(amount * 100) / 100,
+      desc: desc,
+      category: category,
+      day: day,
+      owner: owner,
+      active: true
+    });
+    saveData(data);
+    generateRecurringForMonth(monthKeyFromDate(getTodayISO()));
+
+    document.getElementById("fixedAmountInput").value = "";
+    document.getElementById("fixedDescInput").value = "";
+    document.getElementById("fixedCatInput").value = "Casa";
+    document.getElementById("fixedDayInput").value = "";
+    document.getElementById("fixedOwnerInput").value = "Compartido";
+
+    render();
+    showToast("Gasto fijo agregado");
   });
 
   // --- Navegación entre meses ---
@@ -812,6 +1252,32 @@
     showToast("Presupuesto actualizado");
   });
 
+  // --- Presupuesto por categoría ---
+  document.getElementById("saveCatBudgetsBtn").addEventListener("click", function(){
+    var inputs = document.querySelectorAll("#catBudgetGrid input[data-cat]");
+    var hasError = false;
+    var values = [];
+    inputs.forEach(function(input){
+      var raw = input.value.trim();
+      var val = raw === "" ? 0 : parseFloat(raw);
+      if(!isFinite(val) || val < 0){
+        hasError = true;
+        return;
+      }
+      values.push({ cat: input.getAttribute("data-cat"), val: Math.round(val * 100) / 100 });
+    });
+    if(hasError){
+      showToast("Revisá los montos ingresados");
+      return;
+    }
+    values.forEach(function(v){
+      setCategoryBudget(currentMonthKey, v.cat, v.val);
+    });
+    saveData(data);
+    render();
+    showToast("Topes por categoría guardados");
+  });
+
   // --- Exportar / Importar ---
   document.getElementById("exportBtn").addEventListener("click", function(){
     var blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
@@ -841,13 +1307,24 @@
           throw new Error("Formato inválido");
         }
         data.budgets = Object.assign({}, data.budgets, imported.budgets || {});
+        data.categoryBudgets = Object.assign({}, data.categoryBudgets, imported.categoryBudgets || {});
         var existingIds = new Set(data.expenses.map(function(e){ return e.id; }));
         imported.expenses.forEach(function(e){
           if(e && !existingIds.has(e.id)){
+            if(!e.owner) e.owner = "Compartido";
             data.expenses.push(e);
             existingIds.add(e.id);
           }
         });
+        if(Array.isArray(imported.recurring)){
+          var existingRecIds = new Set(data.recurring.map(function(r){ return r.id; }));
+          imported.recurring.forEach(function(r){
+            if(r && !existingRecIds.has(r.id)){
+              data.recurring.push(r);
+              existingRecIds.add(r.id);
+            }
+          });
+        }
         saveData(data);
         render();
         showToast("Datos importados");
