@@ -16,7 +16,6 @@
     --yellow:#eab308;
     --red:#ef4444;
     --accent:#6366f1;
-    --pareja:#ec4899;
     --border:#334155;
   }
   *{box-sizing:border-box;}
@@ -26,7 +25,7 @@
     background:var(--bg);
     color:var(--text);
     min-height:100vh;
-    padding-bottom:40px;
+    padding-bottom:88px;
   }
   header{
     padding:20px 16px 8px;
@@ -109,7 +108,7 @@
     color:var(--muted);
   }
   .daily-suggest b{color:var(--text);}
-  form.add-expense{
+  form.add-expense, form.add-fixed{
     display:flex;
     flex-direction:column;
     gap:10px;
@@ -154,6 +153,15 @@
     color:var(--muted);
     margin:-8px 0 12px;
   }
+  .commitment-box{
+    background:var(--card2);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:0.85rem;
+    color:var(--muted);
+    margin-bottom:14px;
+  }
+  .commitment-box b{color:var(--text);}
   .day-group{margin-bottom:14px;}
   .day-group h3{
     font-size:0.85rem;
@@ -172,18 +180,15 @@
   }
   .expense-info{display:flex;flex-direction:column;}
   .expense-desc{font-weight:600;font-size:0.95rem;}
-  .expense-tags{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap;}
+  .expense-tags{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap;align-items:center;}
   .expense-cat{font-size:0.78rem;color:var(--muted);}
-  .owner-badge{
+  .tag-badge{
     font-size:0.72rem;
     padding:2px 7px;
     border-radius:999px;
     background:var(--card);
     color:var(--muted);
   }
-  .owner-badge.owner-mio{color:var(--accent);}
-  .owner-badge.owner-pareja{color:var(--pareja);}
-  .owner-badge.owner-compartido{color:var(--green);}
   .expense-amount{font-weight:700;font-size:1rem;white-space:nowrap;margin-left:10px;}
   .delete-btn{
     background:none;
@@ -207,7 +212,7 @@
     background:rgba(0,0,0,0.6);
     display:flex;align-items:center;justify-content:center;
     padding:20px;
-    z-index:50;
+    z-index:60;
   }
   .modal{
     background:var(--card);
@@ -404,9 +409,6 @@
     width:130px;
   }
   form.add-fixed{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
     margin-bottom:16px;
     padding-bottom:16px;
     border-bottom:1px solid var(--border);
@@ -424,7 +426,7 @@
   .fixed-info{flex:1;min-width:0;}
   .fixed-desc{font-weight:600;font-size:0.9rem;}
   .fixed-meta{font-size:0.78rem;color:var(--muted);margin-top:2px;}
-  .fixed-actions{display:flex;align-items:center;gap:6px;}
+  .fixed-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
   .toggle-btn{
     background:none;
     border:1px solid var(--border);
@@ -436,10 +438,9 @@
     white-space:nowrap;
   }
   .toggle-btn.is-active{color:var(--green);border-color:var(--green);}
-  .month-label
   #toast{
     position:fixed;
-    bottom:20px;
+    bottom:76px;
     left:50%;
     transform:translateX(-50%);
     background:var(--card2);
@@ -454,6 +455,34 @@
     z-index:100;
   }
   #toast.show{opacity:1;}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+  .tabbar{
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+    background:var(--card);
+    border-top:1px solid var(--border);
+    display:flex;
+    z-index:40;
+    padding-bottom:env(safe-area-inset-bottom, 0);
+  }
+  .tab-btn{
+    flex:1;
+    background:none;
+    border:none;
+    color:var(--muted);
+    padding:10px 4px 8px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    font-size:0.68rem;
+    cursor:pointer;
+  }
+  .tab-btn .tab-icon{font-size:1.25rem;}
+  .tab-btn.active{color:var(--accent);}
 </style>
 </head>
 <body>
@@ -469,112 +498,123 @@
 
 <div class="container">
 
-  <div class="card">
-    <div class="budget-header">
-      <span>Presupuesto mensual</span>
-      <button class="edit-btn" id="editBudgetBtn">Editar</button>
-    </div>
-    <div class="remaining-amount" id="remainingAmount">$0</div>
-    <div class="remaining-label" id="remainingLabel">te queda por gastar</div>
-
-    <div class="progress-track">
-      <div class="progress-fill" id="progressFill" style="width:0%;background:var(--green);"></div>
-    </div>
-
-    <div class="stats-row">
-      <div>Gastado<b id="spentAmount">$0</b></div>
-      <div>Presupuesto<b id="budgetAmount">$0</b></div>
-      <div>Días restantes<b id="daysLeft">0</b></div>
-    </div>
-
-    <div class="daily-suggest" id="dailySuggest"></div>
-  </div>
-
-  <div class="card">
-    <h2 class="section-title">Agregar gasto</h2>
-    <form class="add-expense" id="expenseForm">
-      <input type="number" inputmode="decimal" step="0.01" min="0.01" id="amountInput" placeholder="Monto ($)" required>
-      <input type="text" id="descInput" placeholder="Descripción (ej: supermercado)" required maxlength="60">
-      <div class="row2">
-        <select id="catInput">
-          <option value="Comida">🍔 Comida</option>
-          <option value="Transporte">🚗 Transporte</option>
-          <option value="Ocio">🎉 Ocio</option>
-          <option value="Casa">🏠 Casa</option>
-          <option value="Salud">💊 Salud</option>
-          <option value="Otros" selected>📦 Otros</option>
-        </select>
-        <input type="date" id="dateInput">
+  <!-- TAB: INICIO -->
+  <div class="tab-panel active" id="tab-inicio">
+    <div class="card">
+      <div class="budget-header">
+        <span>Presupuesto mensual</span>
+        <button class="edit-btn" id="editBudgetBtn">Editar</button>
       </div>
-      <select id="ownerInput">
-        <option value="Mio">🙂 Mío</option>
-        <option value="Pareja">💜 Pareja</option>
-        <option value="Compartido" selected>🤝 Compartido</option>
-      </select>
-      <button type="submit" class="primary">Agregar gasto</button>
-    </form>
-  </div>
+      <div class="remaining-amount" id="remainingAmount">$0</div>
+      <div class="remaining-label" id="remainingLabel">te queda por gastar</div>
 
-  <div class="card">
-    <h2 class="section-title">Gastos fijos</h2>
-    <div class="section-hint">Se cargan solos cada mes (alquiler, streaming, etc.)</div>
-    <form class="add-fixed" id="fixedForm">
-      <input type="number" inputmode="decimal" step="0.01" min="0.01" id="fixedAmountInput" placeholder="Monto ($)" required>
-      <input type="text" id="fixedDescInput" placeholder="Descripción (ej: alquiler)" required maxlength="60">
-      <div class="row2">
-        <select id="fixedCatInput">
-          <option value="Comida">🍔 Comida</option>
-          <option value="Transporte">🚗 Transporte</option>
-          <option value="Ocio">🎉 Ocio</option>
-          <option value="Casa" selected>🏠 Casa</option>
-          <option value="Salud">💊 Salud</option>
-          <option value="Otros">📦 Otros</option>
-        </select>
-        <input type="number" id="fixedDayInput" min="1" max="31" placeholder="Día del mes (1-31)" required>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width:0%;background:var(--green);"></div>
       </div>
-      <select id="fixedOwnerInput">
-        <option value="Mio">🙂 Mío</option>
-        <option value="Pareja">💜 Pareja</option>
-        <option value="Compartido" selected>🤝 Compartido</option>
-      </select>
-      <button type="submit" class="primary">Agregar gasto fijo</button>
-    </form>
-    <div id="fixedList"></div>
-  </div>
 
-  <div class="card">
-    <h2 class="section-title">Historial</h2>
-    <div id="expenseList"></div>
-    <div class="toolbar">
-      <button id="exportBtn">⬇ Exportar datos</button>
-      <button id="importBtn">⬆ Importar datos</button>
-      <input type="file" id="importFile" accept="application/json" class="hidden">
+      <div class="stats-row">
+        <div>Gastado<b id="spentAmount">$0</b></div>
+        <div>Presupuesto<b id="budgetAmount">$0</b></div>
+        <div>Días restantes<b id="daysLeft">0</b></div>
+      </div>
+
+      <div class="daily-suggest" id="dailySuggest"></div>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Agregar gasto</h2>
+      <form class="add-expense" id="expenseForm">
+        <input type="number" inputmode="decimal" step="0.01" min="0.01" id="amountInput" placeholder="Monto ($)" required>
+        <input type="text" id="descInput" placeholder="Descripción (ej: supermercado)" required maxlength="60">
+        <div class="row2">
+          <select id="catInput">
+            <option value="Comida">🍔 Comida</option>
+            <option value="Transporte">🚗 Transporte</option>
+            <option value="Ocio">🎉 Ocio</option>
+            <option value="Casa">🏠 Casa</option>
+            <option value="Salud">💊 Salud</option>
+            <option value="Otros" selected>📦 Otros</option>
+          </select>
+          <input type="date" id="dateInput">
+        </div>
+        <button type="submit" class="primary">Agregar gasto</button>
+      </form>
     </div>
   </div>
 
-  <div class="card">
-    <h2 class="section-title">Historial por mes</h2>
-    <div id="monthlyHistory"></div>
+  <!-- TAB: FIJOS -->
+  <div class="tab-panel" id="tab-fijos">
+    <div class="card">
+      <h2 class="section-title">Gastos fijos y en cuotas</h2>
+      <div class="section-hint">Se cargan solos cada mes. Los "en cuotas" desaparecen de esta lista cuando se terminan de pagar.</div>
+      <div class="commitment-box" id="fixedCommitment"></div>
+      <form class="add-fixed" id="fixedForm">
+        <input type="number" inputmode="decimal" step="0.01" min="0.01" id="fixedAmountInput" placeholder="Monto por mes ($)" required>
+        <input type="text" id="fixedDescInput" placeholder="Descripción (ej: alquiler)" required maxlength="60">
+        <div class="row2">
+          <select id="fixedCatInput">
+            <option value="Comida">🍔 Comida</option>
+            <option value="Transporte">🚗 Transporte</option>
+            <option value="Ocio">🎉 Ocio</option>
+            <option value="Casa" selected>🏠 Casa</option>
+            <option value="Salud">💊 Salud</option>
+            <option value="Otros">📦 Otros</option>
+          </select>
+          <input type="number" id="fixedDayInput" min="1" max="31" placeholder="Día del mes" required>
+        </div>
+        <div class="row2">
+          <select id="fixedTypeInput">
+            <option value="fijo" selected>🔁 Fijo (todos los meses)</option>
+            <option value="cuotas">📆 En cuotas</option>
+          </select>
+          <input type="number" id="fixedInstallmentsInput" min="2" max="60" placeholder="Cant. de cuotas" class="hidden">
+        </div>
+        <button type="submit" class="primary">Agregar gasto fijo</button>
+      </form>
+      <div id="fixedList"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <h2 class="section-title">Presupuesto por categoría</h2>
-    <div class="section-hint">Opcional: definí un tope por categoría para este mes</div>
-    <div class="catbudget-grid" id="catBudgetGrid"></div>
-    <button class="primary" id="saveCatBudgetsBtn" style="margin-top:14px;">Guardar topes</button>
+  <!-- TAB: HISTORIAL -->
+  <div class="tab-panel" id="tab-historial">
+    <div class="card">
+      <h2 class="section-title">Historial</h2>
+      <div id="expenseList"></div>
+      <div class="toolbar">
+        <button id="exportBtn">⬇ Exportar datos</button>
+        <button id="importBtn">⬆ Importar datos</button>
+        <input type="file" id="importFile" accept="application/json" class="hidden">
+      </div>
+    </div>
   </div>
 
-  <div class="card">
-    <h2 class="section-title">Gastos por categoría</h2>
-    <div id="categorySummary"></div>
+  <!-- TAB: ANÁLISIS -->
+  <div class="tab-panel" id="tab-analisis">
+    <div class="card">
+      <h2 class="section-title">Historial por mes</h2>
+      <div id="monthlyHistory"></div>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Presupuesto por categoría</h2>
+      <div class="section-hint">Opcional: definí un tope por categoría para este mes</div>
+      <div class="catbudget-grid" id="catBudgetGrid"></div>
+      <button class="primary" id="saveCatBudgetsBtn" style="margin-top:14px;">Guardar topes</button>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Gastos por categoría</h2>
+      <div id="categorySummary"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <h2 class="section-title">Gastos compartidos</h2>
-    <div class="section-hint">Cuánto puso cada uno este mes</div>
-    <div id="sharedSummary"></div>
-  </div>
+</div>
 
+<div class="tabbar">
+  <button class="tab-btn active" data-tab="inicio"><span class="tab-icon">🏠</span>Inicio</button>
+  <button class="tab-btn" data-tab="fijos"><span class="tab-icon">🔁</span>Fijos</button>
+  <button class="tab-btn" data-tab="historial"><span class="tab-icon">📋</span>Historial</button>
+  <button class="tab-btn" data-tab="analisis"><span class="tab-icon">📊</span>Análisis</button>
 </div>
 
 <div class="modal-overlay hidden" id="budgetModal">
@@ -595,15 +635,10 @@
   "use strict";
 
   var STORAGE_KEY = "gastos-app-v1";
+  var LAST_TAB_KEY = "gastos-app-lasttab";
   var CATEGORIES = ["Comida","Transporte","Ocio","Casa","Salud","Otros"];
   var categoryEmoji = {
     "Comida":"🍔","Transporte":"🚗","Ocio":"🎉","Casa":"🏠","Salud":"💊","Otros":"📦"
-  };
-  var ownerLabels = {
-    "Mio":"🙂 Mío","Pareja":"💜 Pareja","Compartido":"🤝 Compartido"
-  };
-  var ownerBadgeClass = {
-    "Mio":"owner-mio","Pareja":"owner-pareja","Compartido":"owner-compartido"
   };
 
   function getTodayISO(){
@@ -630,9 +665,6 @@
       if(!Array.isArray(parsed.expenses)) parsed.expenses = [];
       if(!parsed.categoryBudgets || typeof parsed.categoryBudgets !== "object") parsed.categoryBudgets = {};
       if(!Array.isArray(parsed.recurring)) parsed.recurring = [];
-      parsed.expenses.forEach(function(e){
-        if(!e.owner) e.owner = "Compartido";
-      });
       return parsed;
     }catch(e){
       console.error("Error leyendo datos guardados, reiniciando.", e);
@@ -737,37 +769,46 @@
     }).sort(function(a,b){ return b.total - a.total; });
   }
 
-  function ownerTotals(monthKey){
-    var totals = { Mio:0, Pareja:0, Compartido:0 };
-    getExpensesForMonth(monthKey).forEach(function(e){
-      var owner = totals.hasOwnProperty(e.owner) ? e.owner : "Compartido";
-      totals[owner] += (typeof e.amount === "number" ? e.amount : 0);
-    });
-    return totals;
-  }
-
   function generateRecurringForMonth(monthKey){
     var changed = false;
     var dim = daysInMonth(monthKey);
     data.recurring.forEach(function(item){
-      if(!item.active) return;
+      if(!item.active || item.completed) return;
+
       var exists = data.expenses.some(function(e){
         return e.recurringId === item.id && monthKeyFromDate(e.date) === monthKey;
       });
-      if(!exists){
-        var day = Math.min(Math.max(parseInt(item.day,10) || 1, 1), dim);
-        var date = monthKey + "-" + String(day).padStart(2,"0");
-        data.expenses.push({
-          id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
-          amount: item.amount,
-          desc: item.desc,
-          category: item.category,
-          owner: item.owner || "Compartido",
-          date: date,
-          createdAt: Date.now(),
-          recurringId: item.id
-        });
-        changed = true;
+      if(exists) return;
+
+      var day = Math.min(Math.max(parseInt(item.day,10) || 1, 1), dim);
+      var date = monthKey + "-" + String(day).padStart(2,"0");
+      var desc = item.desc;
+      var installmentLabel = null;
+
+      if(item.type === "cuotas"){
+        if(item.installmentsPaid >= item.totalInstallments) return;
+        var index = item.installmentsPaid + 1;
+        installmentLabel = index + "/" + item.totalInstallments;
+        desc = item.desc + " (cuota " + installmentLabel + ")";
+      }
+
+      data.expenses.push({
+        id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
+        amount: item.amount,
+        desc: desc,
+        category: item.category,
+        date: date,
+        createdAt: Date.now(),
+        recurringId: item.id,
+        installmentLabel: installmentLabel
+      });
+      changed = true;
+
+      if(item.type === "cuotas"){
+        item.installmentsPaid = item.installmentsPaid + 1;
+        if(item.installmentsPaid >= item.totalInstallments){
+          item.completed = true;
+        }
       }
     });
     if(changed) saveData(data);
@@ -830,7 +871,6 @@
     renderMonthlyHistory();
     renderCategoryBudgetForm();
     renderCategorySummary();
-    renderSharedSummary();
     renderFixedList();
   }
 
@@ -980,46 +1020,33 @@
     el.innerHTML = html;
   }
 
-  function renderSharedSummary(){
-    var el = document.getElementById("sharedSummary");
-    var spent = totalSpent(currentMonthKey);
-    var totals = ownerTotals(currentMonthKey);
-
-    if(spent === 0){
-      el.innerHTML = '<div class="empty-state">Todavía no hay gastos este mes.</div>';
-      return;
-    }
-
-    var order = ["Mio","Pareja","Compartido"];
-    var html = "";
-    order.forEach(function(owner){
-      var total = totals[owner] || 0;
-      var pct = spent > 0 ? Math.round((total / spent) * 100) : 0;
-      html += '<div class="cat-summary-row">' +
-        '<div class="cat-summary-body">' +
-          '<div class="cat-summary-top"><span>' + ownerLabels[owner] + '</span><span>' + formatMoney(total) + ' · ' + pct + '%</span></div>' +
-          '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct + '%;"></div></div>' +
-        '</div>' +
-      '</div>';
-    });
-
-    el.innerHTML = html;
-  }
-
   function renderFixedList(){
     var el = document.getElementById("fixedList");
-    if(data.recurring.length === 0){
+    var commitmentEl = document.getElementById("fixedCommitment");
+
+    var visibleItems = data.recurring.filter(function(item){ return !item.completed; });
+
+    var monthlyCommitment = visibleItems
+      .filter(function(item){ return item.active; })
+      .reduce(function(sum, item){ return sum + item.amount; }, 0);
+
+    commitmentEl.innerHTML = "Compromiso mensual activo: <b>" + formatMoney(monthlyCommitment) + "</b>";
+
+    if(visibleItems.length === 0){
       el.innerHTML = '<div class="empty-state">Todavía no cargaste gastos fijos.</div>';
       return;
     }
 
     var html = "";
-    data.recurring.forEach(function(item){
+    visibleItems.forEach(function(item){
       var emoji = categoryEmoji[item.category] || "📦";
+      var typeInfo = item.type === "cuotas"
+        ? ("próxima cuota " + (item.installmentsPaid + 1) + "/" + item.totalInstallments)
+        : "todos los meses";
       html += '<div class="fixed-row' + (item.active ? '' : ' is-paused') + '" data-id="' + item.id + '">' +
         '<div class="fixed-info">' +
           '<div class="fixed-desc">' + emoji + ' ' + escapeHtml(item.desc) + '</div>' +
-          '<div class="fixed-meta">' + formatMoney(item.amount) + ' · día ' + item.day + ' · ' + ownerLabels[item.owner || "Compartido"] + '</div>' +
+          '<div class="fixed-meta">' + formatMoney(item.amount) + ' · día ' + item.day + ' · ' + typeInfo + '</div>' +
         '</div>' +
         '<div class="fixed-actions">' +
           '<button class="toggle-btn' + (item.active ? ' is-active' : '') + '" data-action="toggle" data-id="' + item.id + '">' + (item.active ? 'Activo' : 'Pausado') + '</button>' +
@@ -1081,17 +1108,19 @@
       var label = d.toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" });
       html += '<div class="day-group"><h3>' + label + '</h3>';
       groups[date].forEach(function(e){
-        var owner = e.owner || "Compartido";
-        var ownerClass = ownerBadgeClass[owner] || "owner-compartido";
-        var fixedTag = e.recurringId ? ' <span class="owner-badge">🔁 fijo</span>' : "";
+        var tagHtml = "";
+        if(e.recurringId){
+          tagHtml = e.installmentLabel
+            ? '<span class="tag-badge">📆 cuota ' + escapeHtml(e.installmentLabel) + '</span>'
+            : '<span class="tag-badge">🔁 fijo</span>';
+        }
         html += '<div class="expense-item">' +
           '<div class="expense-row-item">' +
             '<div class="expense-info">' +
               '<span class="expense-desc">' + escapeHtml(e.desc) + '</span>' +
               '<div class="expense-tags">' +
                 '<span class="expense-cat">' + escapeHtml(e.category) + '</span>' +
-                '<span class="owner-badge ' + ownerClass + '">' + ownerLabels[owner] + '</span>' +
-                fixedTag +
+                tagHtml +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -1133,7 +1162,6 @@
     var amount = parseFloat(document.getElementById("amountInput").value);
     var desc = document.getElementById("descInput").value.trim();
     var category = document.getElementById("catInput").value;
-    var owner = document.getElementById("ownerInput").value;
     var date = dateInput.value || getTodayISO();
 
     if(!isFinite(amount) || amount <= 0){
@@ -1150,7 +1178,6 @@
       amount: Math.round(amount * 100) / 100,
       desc: desc,
       category: category,
-      owner: owner,
       date: date,
       createdAt: Date.now()
     });
@@ -1159,7 +1186,6 @@
     document.getElementById("amountInput").value = "";
     document.getElementById("descInput").value = "";
     document.getElementById("catInput").value = "Otros";
-    document.getElementById("ownerInput").value = "Compartido";
     dateInput.value = getTodayISO();
 
     currentMonthKey = monthKeyFromDate(date);
@@ -1167,14 +1193,29 @@
     showToast("Gasto agregado");
   });
 
-  // --- Form: gasto fijo ---
+  // --- Form: gasto fijo / en cuotas ---
+  var fixedTypeInput = document.getElementById("fixedTypeInput");
+  var fixedInstallmentsInput = document.getElementById("fixedInstallmentsInput");
+
+  fixedTypeInput.addEventListener("change", function(){
+    var isCuotas = fixedTypeInput.value === "cuotas";
+    fixedInstallmentsInput.classList.toggle("hidden", !isCuotas);
+    if(isCuotas){
+      fixedInstallmentsInput.setAttribute("required", "required");
+    } else {
+      fixedInstallmentsInput.removeAttribute("required");
+      fixedInstallmentsInput.value = "";
+    }
+  });
+
   document.getElementById("fixedForm").addEventListener("submit", function(ev){
     ev.preventDefault();
     var amount = parseFloat(document.getElementById("fixedAmountInput").value);
     var desc = document.getElementById("fixedDescInput").value.trim();
     var category = document.getElementById("fixedCatInput").value;
     var day = parseInt(document.getElementById("fixedDayInput").value, 10);
-    var owner = document.getElementById("fixedOwnerInput").value;
+    var type = fixedTypeInput.value;
+    var installments = parseInt(fixedInstallmentsInput.value, 10);
 
     if(!isFinite(amount) || amount <= 0){
       showToast("Ingresá un monto válido");
@@ -1188,16 +1229,24 @@
       showToast("Ingresá un día del mes válido (1-31)");
       return;
     }
+    if(type === "cuotas" && (!isFinite(installments) || installments < 2)){
+      showToast("Ingresá la cantidad de cuotas (mínimo 2)");
+      return;
+    }
 
-    data.recurring.push({
+    var newItem = {
       id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
       amount: Math.round(amount * 100) / 100,
       desc: desc,
       category: category,
       day: day,
-      owner: owner,
-      active: true
-    });
+      type: type,
+      active: true,
+      completed: false,
+      installmentsPaid: 0,
+      totalInstallments: type === "cuotas" ? installments : null
+    };
+    data.recurring.push(newItem);
     saveData(data);
     generateRecurringForMonth(monthKeyFromDate(getTodayISO()));
 
@@ -1205,10 +1254,13 @@
     document.getElementById("fixedDescInput").value = "";
     document.getElementById("fixedCatInput").value = "Casa";
     document.getElementById("fixedDayInput").value = "";
-    document.getElementById("fixedOwnerInput").value = "Compartido";
+    fixedTypeInput.value = "fijo";
+    fixedInstallmentsInput.value = "";
+    fixedInstallmentsInput.classList.add("hidden");
+    fixedInstallmentsInput.removeAttribute("required");
 
     render();
-    showToast("Gasto fijo agregado");
+    showToast(type === "cuotas" ? "Gasto en cuotas agregado" : "Gasto fijo agregado");
   });
 
   // --- Navegación entre meses ---
@@ -1311,7 +1363,6 @@
         var existingIds = new Set(data.expenses.map(function(e){ return e.id; }));
         imported.expenses.forEach(function(e){
           if(e && !existingIds.has(e.id)){
-            if(!e.owner) e.owner = "Compartido";
             data.expenses.push(e);
             existingIds.add(e.id);
           }
@@ -1336,6 +1387,29 @@
     };
     reader.readAsText(file);
   });
+
+  // --- Pestañas ---
+  function switchTab(name){
+    document.querySelectorAll(".tab-panel").forEach(function(p){
+      p.classList.toggle("active", p.id === "tab-" + name);
+    });
+    document.querySelectorAll(".tab-btn").forEach(function(b){
+      b.classList.toggle("active", b.getAttribute("data-tab") === name);
+    });
+    try{ localStorage.setItem(LAST_TAB_KEY, name); }catch(e){}
+  }
+
+  document.querySelectorAll(".tab-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      switchTab(btn.getAttribute("data-tab"));
+    });
+  });
+
+  var lastTab = null;
+  try{ lastTab = localStorage.getItem(LAST_TAB_KEY); }catch(e){}
+  if(lastTab && document.getElementById("tab-" + lastTab)){
+    switchTab(lastTab);
+  }
 
   render();
 })();
