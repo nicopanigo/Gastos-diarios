@@ -438,6 +438,10 @@
     white-space:nowrap;
   }
   .toggle-btn.is-active{color:var(--green);border-color:var(--green);}
+  .tag-card{color:var(--yellow);border:1px solid var(--yellow);background:transparent;}
+  .stats-row2{margin-top:10px;}
+  .income-item .expense-amount{color:var(--green);}
+  .income-amount{color:var(--green);}
   #toast{
     position:fixed;
     bottom:76px;
@@ -518,6 +522,11 @@
         <div>Días restantes<b id="daysLeft">0</b></div>
       </div>
 
+      <div class="stats-row stats-row2">
+        <div>Ingresos<b id="incomeAmount" class="income-amount">$0</b></div>
+        <div>Balance<b id="balanceAmount">$0</b></div>
+      </div>
+
       <div class="daily-suggest" id="dailySuggest"></div>
     </div>
 
@@ -537,8 +546,26 @@
           </select>
           <input type="date" id="dateInput">
         </div>
+        <select id="methodInput">
+          <option value="Efectivo" selected>💵 Efectivo</option>
+          <option value="Transferencia">🏦 Transferencia</option>
+          <option value="Tarjeta">💳 Tarjeta</option>
+        </select>
+        <div class="section-hint hidden" id="methodHint" style="margin-top:-4px;"></div>
         <button type="submit" class="primary">Agregar gasto</button>
       </form>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Ingresos</h2>
+      <div class="section-hint">Sueldo, extra, reintegros, etc. de este mes</div>
+      <form class="add-expense" id="incomeForm">
+        <input type="number" inputmode="decimal" step="0.01" min="0.01" id="incomeAmountInput" placeholder="Monto ($)" required>
+        <input type="text" id="incomeDescInput" placeholder="Descripción (ej: sueldo)" required maxlength="60">
+        <input type="date" id="incomeDateInput">
+        <button type="submit" class="primary">Agregar ingreso</button>
+      </form>
+      <div id="incomeList" style="margin-top:14px;"></div>
     </div>
   </div>
 
@@ -567,8 +594,14 @@
             <option value="fijo" selected>🔁 Fijo (todos los meses)</option>
             <option value="cuotas">📆 En cuotas</option>
           </select>
-          <input type="number" id="fixedInstallmentsInput" min="2" max="60" placeholder="Cant. de cuotas" class="hidden">
+          <input type="number" id="fixedInstallmentsInput" min="1" max="60" placeholder="Cant. de cuotas (mín. 1)" class="hidden">
         </div>
+        <select id="fixedMethodInput">
+          <option value="Efectivo" selected>💵 Efectivo</option>
+          <option value="Transferencia">🏦 Transferencia</option>
+          <option value="Tarjeta">💳 Tarjeta</option>
+        </select>
+        <div class="section-hint" style="margin-top:-4px;">Si es con tarjeta, cada cuota/pago se cuenta en el presupuesto del mes siguiente a cuando se genera.</div>
         <button type="submit" class="primary">Agregar gasto fijo</button>
       </form>
       <div id="fixedList"></div>
@@ -640,6 +673,9 @@
   var categoryEmoji = {
     "Comida":"🍔","Transporte":"🚗","Ocio":"🎉","Casa":"🏠","Salud":"💊","Otros":"📦"
   };
+  var methodLabels = {
+    "Efectivo":"💵 Efectivo","Transferencia":"🏦 Transferencia","Tarjeta":"💳 Tarjeta"
+  };
 
   function getTodayISO(){
     var d = new Date();
@@ -652,7 +688,7 @@
   }
 
   function emptyData(){
-    return { budgets:{}, expenses:[], categoryBudgets:{}, recurring:[] };
+    return { budgets:{}, expenses:[], categoryBudgets:{}, recurring:[], incomes:[] };
   }
 
   function loadData(){
@@ -665,6 +701,7 @@
       if(!Array.isArray(parsed.expenses)) parsed.expenses = [];
       if(!parsed.categoryBudgets || typeof parsed.categoryBudgets !== "object") parsed.categoryBudgets = {};
       if(!Array.isArray(parsed.recurring)) parsed.recurring = [];
+      if(!Array.isArray(parsed.incomes)) parsed.incomes = [];
       return parsed;
     }catch(e){
       console.error("Error leyendo datos guardados, reiniciando.", e);
@@ -730,9 +767,23 @@
     data.categoryBudgets[monthKey][cat] = value;
   }
 
+  function shiftMonthKey(monthKey, delta){
+    var parts = monthKey.split("-");
+    var y = parseInt(parts[0],10), m = parseInt(parts[1],10);
+    var d = new Date(y, m - 1 + delta, 1);
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+
+  // Los gastos con tarjeta se cuentan en el presupuesto del mes siguiente al de la compra,
+  // porque es cuando realmente se pagan (resumen de tarjeta).
+  function getExpenseMonthKey(e){
+    var txMonth = monthKeyFromDate(e.date);
+    return e.method === "Tarjeta" ? shiftMonthKey(txMonth, 1) : txMonth;
+  }
+
   function getExpensesForMonth(monthKey){
     return data.expenses.filter(function(e){
-      return monthKeyFromDate(e.date) === monthKey;
+      return getExpenseMonthKey(e) === monthKey;
     });
   }
 
@@ -742,17 +793,23 @@
     }, 0);
   }
 
-  function shiftMonthKey(monthKey, delta){
-    var parts = monthKey.split("-");
-    var y = parseInt(parts[0],10), m = parseInt(parts[1],10);
-    var d = new Date(y, m - 1 + delta, 1);
-    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  function getIncomesForMonth(monthKey){
+    return data.incomes.filter(function(inc){
+      return monthKeyFromDate(inc.date) === monthKey;
+    });
+  }
+
+  function totalIncome(monthKey){
+    return getIncomesForMonth(monthKey).reduce(function(sum, inc){
+      return sum + (typeof inc.amount === "number" ? inc.amount : 0);
+    }, 0);
   }
 
   function getAllMonthKeys(){
     var keys = {};
     Object.keys(data.budgets).forEach(function(k){ keys[k] = true; });
-    data.expenses.forEach(function(e){ keys[monthKeyFromDate(e.date)] = true; });
+    data.expenses.forEach(function(e){ keys[getExpenseMonthKey(e)] = true; });
+    data.incomes.forEach(function(inc){ keys[monthKeyFromDate(inc.date)] = true; });
     keys[currentMonthKey] = true;
     keys[monthKeyFromDate(getTodayISO())] = true;
     return Object.keys(keys).sort().reverse();
@@ -797,6 +854,7 @@
         amount: item.amount,
         desc: desc,
         category: item.category,
+        method: item.method || "Efectivo",
         date: date,
         createdAt: Date.now(),
         recurringId: item.id,
@@ -843,6 +901,13 @@
     document.getElementById("spentAmount").textContent = formatMoney(spent);
     document.getElementById("budgetAmount").textContent = formatMoney(budget);
 
+    var income = totalIncome(currentMonthKey);
+    var balance = income - spent;
+    document.getElementById("incomeAmount").textContent = formatMoney(income);
+    var balanceEl = document.getElementById("balanceAmount");
+    balanceEl.textContent = formatMoney(balance);
+    balanceEl.style.color = balance < 0 ? "var(--red)" : "var(--green)";
+
     var daysLeft = daysRemainingInMonth(currentMonthKey);
     document.getElementById("daysLeft").textContent = daysLeft;
 
@@ -868,10 +933,54 @@
     }
 
     renderExpenseList();
+    renderIncomeList();
     renderMonthlyHistory();
     renderCategoryBudgetForm();
     renderCategorySummary();
     renderFixedList();
+  }
+
+  function renderIncomeList(){
+    var el = document.getElementById("incomeList");
+    var incomes = getIncomesForMonth(currentMonthKey).slice().sort(function(a,b){
+      if(a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return b.createdAt - a.createdAt;
+    });
+
+    if(incomes.length === 0){
+      el.innerHTML = '<div class="empty-state">Todavía no cargaste ingresos este mes.</div>';
+      return;
+    }
+
+    var html = "";
+    incomes.forEach(function(inc){
+      var d = new Date(inc.date + "T00:00:00");
+      var shortDate = d.toLocaleDateString("es-AR", { day:"numeric", month:"short" });
+      html += '<div class="expense-item income-item">' +
+        '<div class="expense-row-item">' +
+          '<div class="expense-info">' +
+            '<span class="expense-desc">' + escapeHtml(inc.desc) + '</span>' +
+            '<span class="expense-cat">' + shortDate + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="expense-row-item">' +
+          '<span class="expense-amount">+' + formatMoney(inc.amount) + '</span>' +
+          '<button class="delete-btn" data-id="' + inc.id + '" aria-label="Eliminar">✕</button>' +
+        '</div>' +
+      '</div>';
+    });
+
+    el.innerHTML = html;
+
+    el.querySelectorAll(".delete-btn").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-id");
+        data.incomes = data.incomes.filter(function(inc){ return String(inc.id) !== String(id); });
+        saveData(data);
+        render();
+        showToast("Ingreso eliminado");
+      });
+    });
   }
 
   function renderMonthlyHistory(){
@@ -1114,12 +1223,22 @@
             ? '<span class="tag-badge">📆 cuota ' + escapeHtml(e.installmentLabel) + '</span>'
             : '<span class="tag-badge">🔁 fijo</span>';
         }
+        var method = e.method || "Efectivo";
+        var methodTag = '<span class="tag-badge' + (method === "Tarjeta" ? ' tag-card' : '') + '">' + methodLabels[method] + '</span>';
+        var deferredNote = "";
+        if(method === "Tarjeta"){
+          var billingMonth = shiftMonthKey(monthKeyFromDate(e.date), 1);
+          var bp = billingMonth.split("-");
+          deferredNote = '<span class="tag-badge tag-card">se paga en ' + monthNames[parseInt(bp[1],10)-1] + '</span>';
+        }
         html += '<div class="expense-item">' +
           '<div class="expense-row-item">' +
             '<div class="expense-info">' +
               '<span class="expense-desc">' + escapeHtml(e.desc) + '</span>' +
               '<div class="expense-tags">' +
                 '<span class="expense-cat">' + escapeHtml(e.category) + '</span>' +
+                methodTag +
+                deferredNote +
                 tagHtml +
               '</div>' +
             '</div>' +
@@ -1157,11 +1276,30 @@
   dateInput.value = getTodayISO();
   dateInput.max = getTodayISO();
 
+  var methodInput = document.getElementById("methodInput");
+  var methodHint = document.getElementById("methodHint");
+
+  function updateMethodHint(){
+    if(methodInput.value === "Tarjeta"){
+      var date = dateInput.value || getTodayISO();
+      var billingMonth = shiftMonthKey(monthKeyFromDate(date), 1);
+      var bp = billingMonth.split("-");
+      var label = monthNames[parseInt(bp[1],10)-1] + " " + bp[0];
+      methodHint.innerHTML = "💳 Este gasto se va a contar en el presupuesto de <b>" + label + "</b>.";
+      methodHint.classList.remove("hidden");
+    } else {
+      methodHint.classList.add("hidden");
+    }
+  }
+  methodInput.addEventListener("change", updateMethodHint);
+  dateInput.addEventListener("change", updateMethodHint);
+
   document.getElementById("expenseForm").addEventListener("submit", function(ev){
     ev.preventDefault();
     var amount = parseFloat(document.getElementById("amountInput").value);
     var desc = document.getElementById("descInput").value.trim();
     var category = document.getElementById("catInput").value;
+    var method = methodInput.value;
     var date = dateInput.value || getTodayISO();
 
     if(!isFinite(amount) || amount <= 0){
@@ -1178,6 +1316,7 @@
       amount: Math.round(amount * 100) / 100,
       desc: desc,
       category: category,
+      method: method,
       date: date,
       createdAt: Date.now()
     });
@@ -1186,11 +1325,51 @@
     document.getElementById("amountInput").value = "";
     document.getElementById("descInput").value = "";
     document.getElementById("catInput").value = "Otros";
+    methodInput.value = "Efectivo";
     dateInput.value = getTodayISO();
+    updateMethodHint();
+
+    currentMonthKey = method === "Tarjeta" ? shiftMonthKey(monthKeyFromDate(date), 1) : monthKeyFromDate(date);
+    render();
+    showToast("Gasto agregado");
+  });
+
+  // --- Form: agregar ingreso ---
+  var incomeDateInput = document.getElementById("incomeDateInput");
+  incomeDateInput.value = getTodayISO();
+  incomeDateInput.max = getTodayISO();
+
+  document.getElementById("incomeForm").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var amount = parseFloat(document.getElementById("incomeAmountInput").value);
+    var desc = document.getElementById("incomeDescInput").value.trim();
+    var date = incomeDateInput.value || getTodayISO();
+
+    if(!isFinite(amount) || amount <= 0){
+      showToast("Ingresá un monto válido");
+      return;
+    }
+    if(!desc){
+      showToast("Ingresá una descripción");
+      return;
+    }
+
+    data.incomes.push({
+      id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
+      amount: Math.round(amount * 100) / 100,
+      desc: desc,
+      date: date,
+      createdAt: Date.now()
+    });
+    saveData(data);
+
+    document.getElementById("incomeAmountInput").value = "";
+    document.getElementById("incomeDescInput").value = "";
+    incomeDateInput.value = getTodayISO();
 
     currentMonthKey = monthKeyFromDate(date);
     render();
-    showToast("Gasto agregado");
+    showToast("Ingreso agregado");
   });
 
   // --- Form: gasto fijo / en cuotas ---
@@ -1216,6 +1395,7 @@
     var day = parseInt(document.getElementById("fixedDayInput").value, 10);
     var type = fixedTypeInput.value;
     var installments = parseInt(fixedInstallmentsInput.value, 10);
+    var method = document.getElementById("fixedMethodInput").value;
 
     if(!isFinite(amount) || amount <= 0){
       showToast("Ingresá un monto válido");
@@ -1229,8 +1409,8 @@
       showToast("Ingresá un día del mes válido (1-31)");
       return;
     }
-    if(type === "cuotas" && (!isFinite(installments) || installments < 2)){
-      showToast("Ingresá la cantidad de cuotas (mínimo 2)");
+    if(type === "cuotas" && (!isFinite(installments) || installments < 1)){
+      showToast("Ingresá la cantidad de cuotas (mínimo 1)");
       return;
     }
 
@@ -1241,6 +1421,7 @@
       category: category,
       day: day,
       type: type,
+      method: method,
       active: true,
       completed: false,
       installmentsPaid: 0,
@@ -1254,6 +1435,7 @@
     document.getElementById("fixedDescInput").value = "";
     document.getElementById("fixedCatInput").value = "Casa";
     document.getElementById("fixedDayInput").value = "";
+    document.getElementById("fixedMethodInput").value = "Efectivo";
     fixedTypeInput.value = "fijo";
     fixedInstallmentsInput.value = "";
     fixedInstallmentsInput.classList.add("hidden");
@@ -1373,6 +1555,15 @@
             if(r && !existingRecIds.has(r.id)){
               data.recurring.push(r);
               existingRecIds.add(r.id);
+            }
+          });
+        }
+        if(Array.isArray(imported.incomes)){
+          var existingIncIds = new Set(data.incomes.map(function(inc){ return inc.id; }));
+          imported.incomes.forEach(function(inc){
+            if(inc && !existingIncIds.has(inc.id)){
+              data.incomes.push(inc);
+              existingIncIds.add(inc.id);
             }
           });
         }
