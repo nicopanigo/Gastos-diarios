@@ -108,6 +108,13 @@
     color:var(--muted);
   }
   .daily-suggest b{color:var(--text);}
+  .motivational-phrase{
+    margin-top:8px;
+    padding-top:8px;
+    border-top:1px solid var(--border);
+    font-style:italic;
+    color:var(--muted);
+  }
   form.add-expense, form.add-fixed{
     display:flex;
     flex-direction:column;
@@ -526,7 +533,6 @@
 
       <div class="stats-row stats-row2">
         <div>Ingresos<b id="incomeAmount" class="income-amount">$0</b></div>
-        <div>Balance<b id="balanceAmount">$0</b></div>
       </div>
 
       <div class="daily-suggest" id="dailySuggest"></div>
@@ -616,13 +622,14 @@
   <div class="tab-panel" id="tab-historial">
     <div class="card">
       <h2 class="section-title">Historial</h2>
-      <div id="expenseList"></div>
-      <div class="toolbar">
+      <div class="toolbar" style="margin-top:0;margin-bottom:14px;">
         <button id="exportBtn">⬇ Exportar datos</button>
         <button id="importBtn">⬆ Importar datos</button>
         <button id="viewChartBtn">📊 Gráfico</button>
         <input type="file" id="importFile" accept="application/json" class="hidden">
       </div>
+      <input type="text" id="searchInput" placeholder="Buscar por día (ej: 5) o palabra..." style="margin-bottom:14px;">
+      <div id="expenseList"></div>
     </div>
   </div>
 
@@ -791,6 +798,50 @@
     var total = daysInMonth(monthKey);
     var todayDay = parseInt(todayISO.split("-")[2],10);
     return Math.max(total - todayDay + 1, 1);
+  }
+
+  var motivationalPhrases = [
+    "Cada peso que no gastás hoy es un peso que ya elegiste para tu vos del futuro.",
+    "No es no gastar: es elegir mejor en qué.",
+    "Un día prolijo con la plata vale más que un mes de arrepentimientos.",
+    "El presupuesto no te ata, te libera para lo que realmente importa.",
+    "Hoy sumás una decisión más a tu racha de finanzas en orden.",
+    "Gastar menos no es sacrificio, es puntería.",
+    "Cada gasto anotado es un paso menos a ciegas.",
+    "La constancia de hoy es la tranquilidad de fin de mes.",
+    "No se trata de privarte, se trata de no sorprenderte.",
+    "Tu billetera te va a agradecer esta pausa antes de gastar.",
+    "Pequeñas decisiones de hoy, menos sustos en la tarjeta.",
+    "Ahorrar un poco cada día pesa más de lo que parece.",
+    "El control de gastos de hoy es el respiro de mañana.",
+    "Vas bien: cada registro te acerca a tu objetivo.",
+    "Gastar con cabeza también es una forma de cuidarte.",
+    "Hoy es un buen día para elegir en vez de improvisar.",
+    "La plata rinde más cuando la mirás de frente.",
+    "Un gasto pensado vale más que dos impulsivos.",
+    "Anotar tus gastos hoy es hacerle un favor a tu yo de fin de mes.",
+    "No hace falta gastar de golpe todo lo que tenés disponible.",
+    "Cada mes que cerrás en orden, el próximo te cuesta menos.",
+    "Ser cuidadoso con la plata también es una forma de éxito.",
+    "Lo que no gastás hoy, mañana puede ser una tranquilidad.",
+    "Vas construyendo un hábito, no solo llenando una planilla.",
+    "Elegir bien hoy es tener más opciones mañana.",
+    "El orden en los gastos también es una forma de calma.",
+    "No subestimes lo que suman los gastos chicos del día a día.",
+    "Cuidar la plata de a poco también es cuidarte a vos.",
+    "Cada semana que controlás tus gastos, ganás margen.",
+    "Cada objetivo de ahorro empieza con un día como hoy.",
+    "Ir despacio con los gastos también es avanzar."
+  ];
+
+  function getMotivationalPhrase(){
+    var todayISO = getTodayISO();
+    var parts = todayISO.split("-").map(Number);
+    var d = new Date(parts[0], parts[1] - 1, parts[2]);
+    var start = new Date(parts[0], 0, 1);
+    var diffDays = Math.floor((d - start) / 86400000);
+    var idx = ((diffDays % motivationalPhrases.length) + motivationalPhrases.length) % motivationalPhrases.length;
+    return motivationalPhrases[idx];
   }
 
   function getBudget(monthKey){
@@ -975,11 +1026,7 @@
     document.getElementById("budgetAmount").textContent = formatMoney(budget);
 
     var income = totalIncome(currentMonthKey);
-    var balance = income - spent;
     document.getElementById("incomeAmount").textContent = formatMoney(income);
-    var balanceEl = document.getElementById("balanceAmount");
-    balanceEl.textContent = formatMoney(balance);
-    balanceEl.style.color = balance < 0 ? "var(--red)" : "var(--green)";
 
     var daysLeft = daysRemainingInMonth(currentMonthKey);
     document.getElementById("daysLeft").textContent = daysLeft;
@@ -1002,7 +1049,8 @@
       suggestEl.innerHTML = "Ya usaste todo tu presupuesto de este mes.";
     } else {
       var perDay = remaining / daysLeft;
-      suggestEl.innerHTML = "Podés gastar hasta <b>" + formatMoney(perDay) + "</b> por día el resto del mes.";
+      suggestEl.innerHTML = "Podés gastar hasta <b>" + formatMoney(perDay) + "</b> por día el resto del mes." +
+        '<div class="motivational-phrase">' + escapeHtml(getMotivationalPhrase()) + '</div>';
     }
 
     renderExpenseList();
@@ -1058,16 +1106,15 @@
 
   function renderMonthlyHistory(){
     var el = document.getElementById("monthlyHistory");
-    var months = getAllMonthKeys();
 
-    var withData = months.filter(function(mk){
-      return totalSpent(mk) > 0 || getBudget(mk) > 0;
-    });
-
-    if(withData.length === 0){
-      el.innerHTML = '<div class="empty-state">Todavía no hay datos de meses anteriores.</div>';
-      return;
-    }
+    // Ventana fija: 2 meses antes y 2 después del mes que se está viendo.
+    var withData = [
+      shiftMonthKey(currentMonthKey, -2),
+      shiftMonthKey(currentMonthKey, -1),
+      currentMonthKey,
+      shiftMonthKey(currentMonthKey, 1),
+      shiftMonthKey(currentMonthKey, 2)
+    ];
 
     var html = "";
     withData.forEach(function(mk){
@@ -1273,15 +1320,35 @@
     });
   }
 
+  function matchesSearch(e, query){
+    if(!query) return true;
+    query = query.trim().toLowerCase();
+    if(query === "") return true;
+
+    // Si la búsqueda es un número (día del mes), filtra por ese día.
+    if(/^\d{1,2}$/.test(query)){
+      var day = parseInt(e.date.split("-")[2], 10);
+      return day === parseInt(query, 10);
+    }
+
+    var haystack = (e.desc + " " + e.category).toLowerCase();
+    return haystack.indexOf(query) !== -1;
+  }
+
   function renderExpenseList(){
     var listEl = document.getElementById("expenseList");
-    var monthExpenses = getExpensesForMonth(currentMonthKey).slice().sort(function(a,b){
-      if(a.date !== b.date) return a.date < b.date ? 1 : -1;
-      return b.createdAt - a.createdAt;
-    });
+    var searchInput = document.getElementById("searchInput");
+    var query = searchInput ? searchInput.value : "";
+
+    var monthExpenses = getExpensesForMonth(currentMonthKey)
+      .filter(function(e){ return matchesSearch(e, query); })
+      .sort(function(a,b){
+        if(a.date !== b.date) return a.date < b.date ? 1 : -1;
+        return b.createdAt - a.createdAt;
+      });
 
     if(monthExpenses.length === 0){
-      listEl.innerHTML = '<div class="empty-state">Todavía no cargaste gastos este mes.</div>';
+      listEl.innerHTML = '<div class="empty-state">' + (query.trim() !== "" ? "No hay gastos que coincidan con la búsqueda." : "Todavía no cargaste gastos este mes.") + '</div>';
       return;
     }
 
@@ -1351,6 +1418,11 @@
     div.textContent = str == null ? "" : String(str);
     return div.innerHTML;
   }
+
+  // --- Buscador del historial ---
+  document.getElementById("searchInput").addEventListener("input", function(){
+    renderExpenseList();
+  });
 
   // --- Form: agregar gasto ---
   var dateInput = document.getElementById("dateInput");
