@@ -252,11 +252,13 @@
   .hidden{display:none !important;}
   .toolbar{
     display:flex;
+    flex-wrap:wrap;
     gap:8px;
     margin-top:16px;
   }
   .toolbar button{
     flex:1;
+    min-width:100px;
     background:var(--card2);
     color:var(--muted);
     border:1px solid var(--border);
@@ -542,6 +544,7 @@
             <option value="Ocio">🎉 Ocio</option>
             <option value="Casa">🏠 Casa</option>
             <option value="Salud">💊 Salud</option>
+            <option value="Ahorro">💰 Ahorro</option>
             <option value="Otros" selected>📦 Otros</option>
           </select>
           <input type="date" id="dateInput">
@@ -585,6 +588,7 @@
             <option value="Ocio">🎉 Ocio</option>
             <option value="Casa" selected>🏠 Casa</option>
             <option value="Salud">💊 Salud</option>
+            <option value="Ahorro">💰 Ahorro</option>
             <option value="Otros">📦 Otros</option>
           </select>
           <input type="number" id="fixedDayInput" min="1" max="31" placeholder="Día del mes" required>
@@ -616,6 +620,7 @@
       <div class="toolbar">
         <button id="exportBtn">⬇ Exportar datos</button>
         <button id="importBtn">⬆ Importar datos</button>
+        <button id="viewChartBtn">📊 Gráfico</button>
         <input type="file" id="importFile" accept="application/json" class="hidden">
       </div>
     </div>
@@ -630,7 +635,7 @@
 
     <div class="card">
       <h2 class="section-title">Presupuesto por categoría</h2>
-      <div class="section-hint">Opcional: definí un tope por categoría para este mes</div>
+      <div class="section-hint" id="catBudgetHint">Opcional: definí un tope por categoría.</div>
       <div class="catbudget-grid" id="catBudgetGrid"></div>
       <button class="primary" id="saveCatBudgetsBtn" style="margin-top:14px;">Guardar topes</button>
     </div>
@@ -661,6 +666,17 @@
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="chartModal">
+  <div class="modal" style="max-width:420px;">
+    <h3>Gastos por categoría — <span id="chartMonthLabel"></span></h3>
+    <div id="chartContainer" style="overflow-x:auto;background:#1e293b;border-radius:10px;"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="closeChartBtn">Cerrar</button>
+      <button class="btn-primary-modal" id="downloadChartBtn">Descargar imagen</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -669,9 +685,9 @@
 
   var STORAGE_KEY = "gastos-app-v1";
   var LAST_TAB_KEY = "gastos-app-lasttab";
-  var CATEGORIES = ["Comida","Transporte","Ocio","Casa","Salud","Otros"];
+  var CATEGORIES = ["Comida","Transporte","Ocio","Casa","Salud","Ahorro","Otros"];
   var categoryEmoji = {
-    "Comida":"🍔","Transporte":"🚗","Ocio":"🎉","Casa":"🏠","Salud":"💊","Otros":"📦"
+    "Comida":"🍔","Transporte":"🚗","Ocio":"🎉","Casa":"🏠","Salud":"💊","Ahorro":"💰","Otros":"📦"
   };
   var methodLabels = {
     "Efectivo":"💵 Efectivo","Transferencia":"🏦 Transferencia","Tarjeta":"💳 Tarjeta"
@@ -691,6 +707,37 @@
     return { budgets:{}, expenses:[], categoryBudgets:{}, recurring:[], incomes:[] };
   }
 
+  var MONTH_KEY_RE = /^\d{4}-\d{2}$/;
+  var CATBUDGET_SEED_KEY = "0000-01"; // ordena antes que cualquier mes real, sirve de "valor de arranque"
+
+  // El presupuesto por categoría se guarda por mes. Un cambio en un mes rige desde ese
+  // mes en adelante (no toca meses anteriores): al buscar el tope de una categoría para
+  // un mes, se usa el valor explícito de ese mes o, si no hay, el del mes explícito más
+  // reciente anterior. Esta función migra datos de versiones viejas (que guardaban un
+  // único tope global por categoría) metiéndolos en un mes "semilla" muy anterior, para
+  // que sigan aplicando igual que antes hasta que el usuario los cambie.
+  function migrateCategoryBudgets(obj){
+    if(!obj || typeof obj !== "object") return {};
+    var keys = Object.keys(obj);
+    if(keys.length === 0) return {};
+
+    var looksNested = keys.every(function(k){
+      return (MONTH_KEY_RE.test(k) || k === CATBUDGET_SEED_KEY) && obj[k] && typeof obj[k] === "object";
+    });
+    if(looksNested) return obj;
+
+    var nested = {};
+    keys.forEach(function(k){
+      if((MONTH_KEY_RE.test(k) || k === CATBUDGET_SEED_KEY) && obj[k] && typeof obj[k] === "object"){
+        nested[k] = obj[k];
+      } else if(typeof obj[k] === "number"){
+        if(!nested[CATBUDGET_SEED_KEY]) nested[CATBUDGET_SEED_KEY] = {};
+        if(obj[k] > 0) nested[CATBUDGET_SEED_KEY][k] = obj[k];
+      }
+    });
+    return nested;
+  }
+
   function loadData(){
     try{
       var raw = localStorage.getItem(STORAGE_KEY);
@@ -699,7 +746,7 @@
       if(!parsed || typeof parsed !== "object") return emptyData();
       if(!parsed.budgets || typeof parsed.budgets !== "object") parsed.budgets = {};
       if(!Array.isArray(parsed.expenses)) parsed.expenses = [];
-      if(!parsed.categoryBudgets || typeof parsed.categoryBudgets !== "object") parsed.categoryBudgets = {};
+      parsed.categoryBudgets = migrateCategoryBudgets(parsed.categoryBudgets);
       if(!Array.isArray(parsed.recurring)) parsed.recurring = [];
       if(!Array.isArray(parsed.incomes)) parsed.incomes = [];
       return parsed;
@@ -756,15 +803,32 @@
     saveData(data);
   }
 
+  // Busca el tope de una categoría vigente para un mes: el valor explícito de ese mes,
+  // o si no hay, el del mes explícito más reciente ANTERIOR (nunca mira meses futuros).
   function getCategoryBudget(monthKey, cat){
-    var m = data.categoryBudgets[monthKey];
-    var v = m ? m[cat] : undefined;
-    return (typeof v === "number" && isFinite(v) && v >= 0) ? v : 0;
+    var keys = Object.keys(data.categoryBudgets).filter(function(k){
+      return k <= monthKey;
+    }).sort();
+    for(var i = keys.length - 1; i >= 0; i--){
+      var monthObj = data.categoryBudgets[keys[i]];
+      var v = monthObj ? monthObj[cat] : undefined;
+      if(typeof v === "number" && isFinite(v) && v >= 0){
+        return v;
+      }
+    }
+    return 0;
   }
 
+  // Fija el tope de una categoría a partir de un mes en adelante (no toca meses anteriores).
   function setCategoryBudget(monthKey, cat, value){
     if(!data.categoryBudgets[monthKey]) data.categoryBudgets[monthKey] = {};
     data.categoryBudgets[monthKey][cat] = value;
+  }
+
+  function sumCategoryBudgets(monthKey){
+    return CATEGORIES.reduce(function(sum, cat){
+      return sum + getCategoryBudget(monthKey, cat);
+    }, 0);
   }
 
   function shiftMonthKey(monthKey, delta){
@@ -873,8 +937,17 @@
     return changed;
   }
 
-  // generar instancias del mes actual real al abrir la app
-  generateRecurringForMonth(monthKeyFromDate(getTodayISO()));
+  // Genera los gastos fijos y las cuotas pendientes con anticipación (12 meses hacia
+  // adelante desde hoy), así quedan cargados para todos los meses del año y las cuotas
+  // se van completando mes a mes hasta terminarse, sin depender de abrir la app cada mes.
+  function generateRecurringAhead(){
+    var todayMonth = monthKeyFromDate(getTodayISO());
+    for(var i = 0; i < 12; i++){
+      generateRecurringForMonth(shiftMonthKey(todayMonth, i));
+    }
+  }
+
+  generateRecurringAhead();
 
   var expandedMonths = {};
 
@@ -1062,6 +1135,14 @@
       '</div>';
     });
     grid.innerHTML = html;
+
+    var hintEl = document.getElementById("catBudgetHint");
+    var monthBudget = getBudget(currentMonthKey);
+    if(monthBudget > 0){
+      hintEl.innerHTML = "Entre todas las categorías no pueden superar el presupuesto de este mes: <b>" + formatMoney(monthBudget) + "</b>. El cambio rige desde este mes en adelante, no modifica meses anteriores.";
+    } else {
+      hintEl.innerHTML = "Definí primero el presupuesto mensual arriba para poder repartirlo por categoría. El cambio rige desde este mes en adelante, no modifica meses anteriores.";
+    }
   }
 
   var rankEmoji = ["🥇","🥈","🥉"];
@@ -1173,7 +1254,7 @@
         if(item){
           item.active = !item.active;
           if(item.active){
-            generateRecurringForMonth(monthKeyFromDate(getTodayISO()));
+            generateRecurringAhead();
           }
           saveData(data);
           render();
@@ -1429,7 +1510,7 @@
     };
     data.recurring.push(newItem);
     saveData(data);
-    generateRecurringForMonth(monthKeyFromDate(getTodayISO()));
+    generateRecurringAhead();
 
     document.getElementById("fixedAmountInput").value = "";
     document.getElementById("fixedDescInput").value = "";
@@ -1491,6 +1572,7 @@
     var inputs = document.querySelectorAll("#catBudgetGrid input[data-cat]");
     var hasError = false;
     var values = [];
+    var sum = 0;
     inputs.forEach(function(input){
       var raw = input.value.trim();
       var val = raw === "" ? 0 : parseFloat(raw);
@@ -1498,18 +1580,148 @@
         hasError = true;
         return;
       }
-      values.push({ cat: input.getAttribute("data-cat"), val: Math.round(val * 100) / 100 });
+      val = Math.round(val * 100) / 100;
+      sum += val;
+      values.push({ cat: input.getAttribute("data-cat"), val: val });
     });
     if(hasError){
       showToast("Revisá los montos ingresados");
       return;
     }
+
+    var monthBudget = getBudget(currentMonthKey);
+    if(monthBudget > 0 && sum > monthBudget){
+      showToast("La suma (" + formatMoney(sum) + ") supera el presupuesto del mes (" + formatMoney(monthBudget) + ")");
+      return;
+    }
+
     values.forEach(function(v){
       setCategoryBudget(currentMonthKey, v.cat, v.val);
     });
     saveData(data);
     render();
     showToast("Topes por categoría guardados");
+  });
+
+  // --- Gráfico de gastos por categoría ---
+  function buildCategoryChartSVG(monthKey){
+    var cats = categoryTotals(monthKey);
+    if(cats.length === 0) return null;
+
+    var prevMonthKey = shiftMonthKey(monthKey, -1);
+    var prevTotals = {};
+    categoryTotals(prevMonthKey).forEach(function(c){ prevTotals[c.category] = c.total; });
+
+    var width = 380;
+    var leftLabelWidth = 108;
+    var rightReserve = 96;
+    var chartAreaWidth = width - leftLabelWidth - rightReserve;
+    var barHeight = 30;
+    var barGap = 16;
+    var maxTotal = Math.max.apply(null, cats.map(function(c){ return c.total; }));
+    var height = cats.length * (barHeight + barGap) + 30;
+
+    var parts = [];
+    parts.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '" width="' + width + '" height="' + height + '" font-family="Arial, Helvetica, sans-serif">');
+    parts.push('<rect width="100%" height="100%" fill="#1e293b"/>');
+
+    cats.forEach(function(c, i){
+      var y = 16 + i * (barHeight + barGap);
+      var barW = maxTotal > 0 ? Math.max((c.total / maxTotal) * chartAreaWidth, 3) : 3;
+      var emoji = categoryEmoji[c.category] || "";
+      var barColor = "#6366f1";
+      var prevTotal = prevTotals[c.category] || 0;
+      var deltaText, deltaColor;
+      if(prevTotal > 0){
+        var deltaPct = Math.round(((c.total - prevTotal) / prevTotal) * 100);
+        if(deltaPct > 0){ deltaText = "▲" + deltaPct + "%"; deltaColor = "#ef4444"; }
+        else if(deltaPct < 0){ deltaText = "▼" + Math.abs(deltaPct) + "%"; deltaColor = "#22c55e"; }
+        else { deltaText = "= 0%"; deltaColor = "#94a3b8"; }
+      } else {
+        deltaText = "nuevo";
+        deltaColor = "#94a3b8";
+      }
+
+      parts.push('<text x="0" y="' + (y + barHeight/2 + 4) + '" fill="#f1f5f9" font-size="12">' + escapeHtml(emoji + ' ' + c.category) + '</text>');
+      parts.push('<rect x="' + leftLabelWidth + '" y="' + y + '" width="' + barW + '" height="' + barHeight + '" rx="6" fill="' + barColor + '"/>');
+      parts.push('<text x="' + (leftLabelWidth + chartAreaWidth + 8) + '" y="' + (y + 13) + '" fill="#f1f5f9" font-size="11" font-weight="bold">' + escapeHtml(formatMoney(c.total)) + '</text>');
+      parts.push('<text x="' + (leftLabelWidth + chartAreaWidth + 8) + '" y="' + (y + 26) + '" fill="' + deltaColor + '" font-size="11">' + escapeHtml(deltaText) + '</text>');
+    });
+
+    parts.push('</svg>');
+    return parts.join('');
+  }
+
+  var chartModal = document.getElementById("chartModal");
+
+  document.getElementById("viewChartBtn").addEventListener("click", function(){
+    var svg = buildCategoryChartSVG(currentMonthKey);
+    var container = document.getElementById("chartContainer");
+    var parts = currentMonthKey.split("-");
+    document.getElementById("chartMonthLabel").textContent = monthNames[parseInt(parts[1],10)-1] + " " + parts[0];
+    if(!svg){
+      container.innerHTML = '<div class="empty-state">No hay gastos este mes para graficar.</div>';
+    } else {
+      container.innerHTML = svg;
+    }
+    chartModal.classList.remove("hidden");
+  });
+
+  document.getElementById("closeChartBtn").addEventListener("click", function(){
+    chartModal.classList.add("hidden");
+  });
+
+  chartModal.addEventListener("click", function(ev){
+    if(ev.target === chartModal) chartModal.classList.add("hidden");
+  });
+
+  document.getElementById("downloadChartBtn").addEventListener("click", function(){
+    var svgEl = document.querySelector("#chartContainer svg");
+    if(!svgEl){
+      showToast("Primero abrí el gráfico de un mes con gastos");
+      return;
+    }
+    try{
+      var svgWidth = parseFloat(svgEl.getAttribute("width")) || 380;
+      var svgHeight = parseFloat(svgEl.getAttribute("height")) || 200;
+      var svgString = new XMLSerializer().serializeToString(svgEl);
+      var svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      var url = URL.createObjectURL(svgBlob);
+      var img = new Image();
+      img.onload = function(){
+        var scale = 2;
+        var canvas = document.createElement("canvas");
+        canvas.width = svgWidth * scale;
+        canvas.height = svgHeight * scale;
+        var ctx = canvas.getContext("2d");
+        ctx.scale(scale, scale);
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(0, 0, svgWidth, svgHeight);
+        ctx.drawImage(img, 0, 0, svgWidth, svgHeight);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(function(blob){
+          if(!blob){
+            showToast("No se pudo generar la imagen");
+            return;
+          }
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "gastos-grafico-" + currentMonthKey + ".png";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          showToast("Gráfico descargado");
+        });
+      };
+      img.onerror = function(){
+        URL.revokeObjectURL(url);
+        showToast("No se pudo generar la imagen en este navegador");
+      };
+      img.src = url;
+    }catch(e){
+      console.error(e);
+      showToast("No se pudo generar la imagen");
+    }
   });
 
   // --- Exportar / Importar ---
@@ -1541,7 +1753,11 @@
           throw new Error("Formato inválido");
         }
         data.budgets = Object.assign({}, data.budgets, imported.budgets || {});
-        data.categoryBudgets = Object.assign({}, data.categoryBudgets, imported.categoryBudgets || {});
+        var importedCatBudgets = migrateCategoryBudgets(imported.categoryBudgets);
+        Object.keys(importedCatBudgets).forEach(function(mk){
+          if(!data.categoryBudgets[mk]) data.categoryBudgets[mk] = {};
+          Object.assign(data.categoryBudgets[mk], importedCatBudgets[mk]);
+        });
         var existingIds = new Set(data.expenses.map(function(e){ return e.id; }));
         imported.expenses.forEach(function(e){
           if(e && !existingIds.has(e.id)){
