@@ -644,6 +644,7 @@
       <h2 class="section-title">Presupuesto por categoría</h2>
       <div class="section-hint" id="catBudgetHint">Opcional: definí un tope por categoría.</div>
       <div class="catbudget-grid" id="catBudgetGrid"></div>
+      <div class="commitment-box" id="catBudgetTotalBox" style="margin-top:14px;margin-bottom:0;"></div>
       <button class="primary" id="saveCatBudgetsBtn" style="margin-top:14px;">Guardar topes</button>
     </div>
 
@@ -1096,7 +1097,12 @@
     el.querySelectorAll(".delete-btn").forEach(function(btn){
       btn.addEventListener("click", function(){
         var id = btn.getAttribute("data-id");
+        var removed = data.incomes.find(function(inc){ return String(inc.id) === String(id); });
         data.incomes = data.incomes.filter(function(inc){ return String(inc.id) !== String(id); });
+        if(removed){
+          var mk = monthKeyFromDate(removed.date);
+          setBudget(mk, Math.max(0, getBudget(mk) - removed.amount));
+        }
         saveData(data);
         render();
         showToast("Ingreso eliminado");
@@ -1189,6 +1195,36 @@
       hintEl.innerHTML = "Entre todas las categorías no pueden superar el presupuesto de este mes: <b>" + formatMoney(monthBudget) + "</b>. El cambio rige desde este mes en adelante, no modifica meses anteriores.";
     } else {
       hintEl.innerHTML = "Definí primero el presupuesto mensual arriba para poder repartirlo por categoría. El cambio rige desde este mes en adelante, no modifica meses anteriores.";
+    }
+
+    renderCatBudgetLiveTotal();
+  }
+
+  // Suma en vivo lo que se va escribiendo en el formulario (sin guardar todavía),
+  // para saber cuánto falta repartir antes de tocar el techo del presupuesto del mes.
+  function renderCatBudgetLiveTotal(){
+    var box = document.getElementById("catBudgetTotalBox");
+    if(!box) return;
+    var inputs = document.querySelectorAll("#catBudgetGrid input[data-cat]");
+    var sum = 0;
+    inputs.forEach(function(input){
+      var val = parseFloat(input.value);
+      if(isFinite(val) && val > 0) sum += val;
+    });
+    var monthBudget = getBudget(currentMonthKey);
+
+    if(monthBudget <= 0){
+      box.innerHTML = "Asignado hasta ahora: <b>" + formatMoney(sum) + "</b>";
+      return;
+    }
+
+    var remaining = monthBudget - sum;
+    if(remaining < 0){
+      box.innerHTML = "Asignado: <b>" + formatMoney(sum) + "</b> de " + formatMoney(monthBudget) +
+        ' — <span style="color:var(--red);">te pasaste por ' + formatMoney(Math.abs(remaining)) + '</span>';
+    } else {
+      box.innerHTML = "Asignado: <b>" + formatMoney(sum) + "</b> de " + formatMoney(monthBudget) +
+        " — todavía te quedan <b>" + formatMoney(remaining) + "</b> sin repartir.";
     }
   }
 
@@ -1507,22 +1543,30 @@
       return;
     }
 
+    var roundedAmount = Math.round(amount * 100) / 100;
+
     data.incomes.push({
       id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
-      amount: Math.round(amount * 100) / 100,
+      amount: roundedAmount,
       desc: desc,
       date: date,
       createdAt: Date.now()
     });
+
+    // El ingreso se suma al presupuesto del mes en el que cae, para que se pueda
+    // gastar de más ese mes sin tener que ir a editar el presupuesto a mano.
+    var incomeMonthKey = monthKeyFromDate(date);
+    setBudget(incomeMonthKey, getBudget(incomeMonthKey) + roundedAmount);
+
     saveData(data);
 
     document.getElementById("incomeAmountInput").value = "";
     document.getElementById("incomeDescInput").value = "";
     incomeDateInput.value = getTodayISO();
 
-    currentMonthKey = monthKeyFromDate(date);
+    currentMonthKey = incomeMonthKey;
     render();
-    showToast("Ingreso agregado");
+    showToast("Ingreso agregado y sumado al presupuesto del mes");
   });
 
   // --- Form: gasto fijo / en cuotas ---
@@ -1640,6 +1684,12 @@
   });
 
   // --- Presupuesto por categoría ---
+  document.getElementById("catBudgetGrid").addEventListener("input", function(ev){
+    if(ev.target && ev.target.matches("input[data-cat]")){
+      renderCatBudgetLiveTotal();
+    }
+  });
+
   document.getElementById("saveCatBudgetsBtn").addEventListener("click", function(){
     var inputs = document.querySelectorAll("#catBudgetGrid input[data-cat]");
     var hasError = false;
