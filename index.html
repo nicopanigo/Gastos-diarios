@@ -636,8 +636,11 @@
   <!-- TAB: ANÁLISIS -->
   <div class="tab-panel" id="tab-analisis">
     <div class="card">
-      <h2 class="section-title">Historial por mes</h2>
-      <div id="monthlyHistory"></div>
+      <button class="budget-header" id="monthlyHistoryToggle" style="width:100%;background:none;border:none;cursor:pointer;padding:0;">
+        <h2 class="section-title" style="margin:0;">Historial por mes</h2>
+        <span id="monthlyHistoryIcon" style="font-size:1.2rem;color:var(--muted);">☰</span>
+      </button>
+      <div id="monthlyHistory" class="hidden"></div>
     </div>
 
     <div class="card">
@@ -1110,8 +1113,30 @@
     });
   }
 
+  function methodTotals(monthKey){
+    var totals = {};
+    getExpensesForMonth(monthKey).forEach(function(e){
+      var m = e.method || "Efectivo";
+      totals[m] = (totals[m] || 0) + (typeof e.amount === "number" ? e.amount : 0);
+    });
+    return Object.keys(totals).map(function(m){
+      return { method: m, total: totals[m] };
+    }).sort(function(a,b){ return b.total - a.total; });
+  }
+
+  var monthlyHistoryOpen = false;
+
   function renderMonthlyHistory(){
     var el = document.getElementById("monthlyHistory");
+    var icon = document.getElementById("monthlyHistoryIcon");
+
+    if(!monthlyHistoryOpen){
+      el.classList.add("hidden");
+      if(icon) icon.textContent = "☰";
+      return;
+    }
+    el.classList.remove("hidden");
+    if(icon) icon.textContent = "✕";
 
     // Ventana fija: 2 meses antes y 2 después del mes que se está viendo.
     var withData = [
@@ -1127,6 +1152,7 @@
       var spent = totalSpent(mk);
       var budget = getBudget(mk);
       var cats = categoryTotals(mk);
+      var methods = methodTotals(mk);
       var isCurrent = mk === currentMonthKey;
       var isExpanded = !!expandedMonths[mk];
       var parts = mk.split("-");
@@ -1147,12 +1173,22 @@
       if(cats.length === 0){
         html += '<div class="empty-state" style="padding:10px 0;">Sin gastos cargados.</div>';
       } else {
+        html += '<div class="section-hint" style="margin:0 0 8px;">Por categoría</div>';
         cats.forEach(function(c){
           var pct = spent > 0 ? Math.round((c.total / spent) * 100) : 0;
           var emoji = categoryEmoji[c.category] || "📦";
           html += '<div class="cat-row">' +
             '<div class="cat-row-top"><span>' + emoji + ' ' + escapeHtml(c.category) + '</span><span>' + formatMoney(c.total) + ' · ' + pct + '%</span></div>' +
             '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct + '%;"></div></div>' +
+          '</div>';
+        });
+
+        html += '<div class="section-hint" style="margin:14px 0 8px;">Por método de pago</div>';
+        methods.forEach(function(m){
+          var pct = spent > 0 ? Math.round((m.total / spent) * 100) : 0;
+          html += '<div class="cat-row">' +
+            '<div class="cat-row-top"><span>' + methodLabels[m.method] + '</span><span>' + formatMoney(m.total) + ' · ' + pct + '%</span></div>' +
+            '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct + '%;background:' + (m.method === "Tarjeta" ? "var(--yellow)" : "var(--accent)") + ';"></div></div>' +
           '</div>';
         });
       }
@@ -1229,6 +1265,52 @@
   }
 
   var rankEmoji = ["🥇","🥈","🥉"];
+  var expandedCategories = {};
+
+  function renderCategoryExpenseDetail(cat){
+    var expenses = getExpensesForMonth(currentMonthKey)
+      .filter(function(e){ return (e.category || "Otros") === cat; })
+      .sort(function(a,b){
+        if(a.date !== b.date) return a.date < b.date ? 1 : -1;
+        return b.createdAt - a.createdAt;
+      });
+
+    if(expenses.length === 0){
+      return '<div class="empty-state" style="padding:10px 0;">Sin gastos en esta categoría.</div>';
+    }
+
+    var html = "";
+    expenses.forEach(function(e){
+      var d = new Date(e.date + "T00:00:00");
+      var shortDate = d.toLocaleDateString("es-AR", { day:"numeric", month:"short" });
+      var tagHtml = "";
+      if(e.recurringId){
+        tagHtml = e.installmentLabel
+          ? '<span class="tag-badge">📆 cuota ' + escapeHtml(e.installmentLabel) + '</span>'
+          : '<span class="tag-badge">🔁 fijo</span>';
+      }
+      var method = e.method || "Efectivo";
+      var methodTag = '<span class="tag-badge' + (method === "Tarjeta" ? ' tag-card' : '') + '">' + methodLabels[method] + '</span>';
+
+      html += '<div class="expense-item">' +
+        '<div class="expense-row-item">' +
+          '<div class="expense-info">' +
+            '<span class="expense-desc">' + escapeHtml(e.desc) + '</span>' +
+            '<div class="expense-tags">' +
+              '<span class="expense-cat">' + shortDate + '</span>' +
+              methodTag +
+              tagHtml +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="expense-row-item">' +
+          '<span class="expense-amount">' + formatMoney(e.amount) + '</span>' +
+          '<button class="delete-btn" data-id="' + e.id + '" aria-label="Eliminar">✕</button>' +
+        '</div>' +
+      '</div>';
+    });
+    return html;
+  }
 
   function renderCategorySummary(){
     var el = document.getElementById("categorySummary");
@@ -1280,17 +1362,42 @@
         ? (formatMoney(c.total) + ' de ' + formatMoney(catBudget) + (c.total > catBudget ? ' (superado)' : ''))
         : (formatMoney(c.total) + ' · ' + shareOfTotal + '% del total');
 
-      html += '<div class="cat-summary-row">' +
-        '<div class="cat-summary-rank">' + rank + '</div>' +
-        '<div class="cat-summary-body">' +
-          '<div class="cat-summary-top"><span>' + emoji + ' ' + escapeHtml(c.category) + '</span><span>' + budgetText + '</span></div>' +
-          '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + barPct + '%;background:' + barColor + ';"></div></div>' +
-          '<div class="cat-summary-meta">' + deltaHtml + '</div>' +
+      var isExpanded = !!expandedCategories[c.category];
+
+      html += '<div class="cat-summary-row" data-cat="' + escapeHtml(c.category) + '" style="cursor:pointer;flex-direction:column;align-items:stretch;">' +
+        '<div style="display:flex;gap:10px;align-items:flex-start;">' +
+          '<div class="cat-summary-rank">' + rank + '</div>' +
+          '<div class="cat-summary-body">' +
+            '<div class="cat-summary-top"><span>' + emoji + ' ' + escapeHtml(c.category) + '</span><span>' + budgetText + '</span></div>' +
+            '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + barPct + '%;background:' + barColor + ';"></div></div>' +
+            '<div class="cat-summary-meta">' + deltaHtml + '<span>' + (isExpanded ? '▴ ocultar gastos' : '▾ ver gastos') + '</span></div>' +
+          '</div>' +
         '</div>' +
+        (isExpanded ? ('<div class="cat-summary-detail" style="margin-top:12px;">' + renderCategoryExpenseDetail(c.category) + '</div>') : '') +
       '</div>';
     });
 
     el.innerHTML = html;
+
+    el.querySelectorAll(".cat-summary-row").forEach(function(row){
+      row.addEventListener("click", function(ev){
+        if(ev.target.closest(".delete-btn")) return;
+        var cat = row.getAttribute("data-cat");
+        expandedCategories[cat] = !expandedCategories[cat];
+        renderCategorySummary();
+      });
+    });
+
+    el.querySelectorAll(".cat-summary-detail .delete-btn").forEach(function(btn){
+      btn.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        var id = btn.getAttribute("data-id");
+        data.expenses = data.expenses.filter(function(e){ return String(e.id) !== String(id); });
+        saveData(data);
+        render();
+        showToast("Gasto eliminado");
+      });
+    });
   }
 
   function renderFixedList(){
@@ -1454,6 +1561,12 @@
     div.textContent = str == null ? "" : String(str);
     return div.innerHTML;
   }
+
+  // --- Colapsar/expandir Historial por mes ---
+  document.getElementById("monthlyHistoryToggle").addEventListener("click", function(){
+    monthlyHistoryOpen = !monthlyHistoryOpen;
+    renderMonthlyHistory();
+  });
 
   // --- Buscador del historial ---
   document.getElementById("searchInput").addEventListener("input", function(){
