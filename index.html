@@ -560,7 +560,6 @@
           <option value="Transferencia">🏦 Transferencia</option>
           <option value="Tarjeta">💳 Tarjeta</option>
         </select>
-        <div class="section-hint hidden" id="methodHint" style="margin-top:-4px;"></div>
         <button type="submit" class="primary">Agregar gasto</button>
       </form>
     </div>
@@ -611,7 +610,7 @@
           <option value="Transferencia">🏦 Transferencia</option>
           <option value="Tarjeta">💳 Tarjeta</option>
         </select>
-        <div class="section-hint" style="margin-top:-4px;">Si es con tarjeta, cada cuota/pago se cuenta en el presupuesto del mes siguiente a cuando se genera.</div>
+        <div class="section-hint" style="margin-top:-4px;">El medio de pago es solo informativo. Si es una compra en cuotas, usá "En cuotas" arriba para que se reparta mes a mes.</div>
         <button type="submit" class="primary">Agregar gasto fijo</button>
       </form>
       <div id="fixedList"></div>
@@ -652,8 +651,15 @@
     </div>
 
     <div class="card">
-      <h2 class="section-title">Gastos por categoría</h2>
-      <div id="categorySummary"></div>
+      <button class="budget-header" id="categorySummaryToggle" style="width:100%;background:none;border:none;cursor:pointer;padding:0;">
+        <h2 class="section-title" style="margin:0;">Gastos por categoría</h2>
+        <span id="categorySummaryIcon" style="font-size:1.2rem;color:var(--muted);">☰</span>
+      </button>
+      <div id="categorySummaryWrap" class="hidden">
+        <div id="categorySummary"></div>
+        <div class="section-hint" style="margin:16px 0 8px;">Por método de pago</div>
+        <div id="methodSummary"></div>
+      </div>
     </div>
   </div>
 
@@ -893,11 +899,11 @@
     return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
 
-  // Los gastos con tarjeta se cuentan en el presupuesto del mes siguiente al de la compra,
-  // porque es cuando realmente se pagan (resumen de tarjeta).
+  // El medio de pago (efectivo/transferencia/tarjeta) es solo informativo: no cambia el
+  // mes al que se imputa el gasto, porque puede ser débito (plata en el momento) y porque
+  // para compras en cuotas que se pagan más adelante ya está la solapa de Gastos fijos.
   function getExpenseMonthKey(e){
-    var txMonth = monthKeyFromDate(e.date);
-    return e.method === "Tarjeta" ? shiftMonthKey(txMonth, 1) : txMonth;
+    return monthKeyFromDate(e.date);
   }
 
   function getExpensesForMonth(monthKey){
@@ -950,6 +956,7 @@
     var dim = daysInMonth(monthKey);
     data.recurring.forEach(function(item){
       if(!item.active || item.completed) return;
+      if(item.startMonth && monthKey < item.startMonth) return;
 
       var exists = data.expenses.some(function(e){
         return e.recurringId === item.id && monthKeyFromDate(e.date) === monthKey;
@@ -1312,7 +1319,46 @@
     return html;
   }
 
+  var categorySummaryOpen = false;
+
+  function renderMethodSummary(){
+    var el = document.getElementById("methodSummary");
+    if(!el) return;
+    var methods = methodTotals(currentMonthKey);
+    var spent = totalSpent(currentMonthKey);
+
+    if(methods.length === 0){
+      el.innerHTML = '<div class="empty-state">Todavía no hay gastos este mes.</div>';
+      return;
+    }
+
+    var html = "";
+    methods.forEach(function(m){
+      var pct = spent > 0 ? Math.round((m.total / spent) * 100) : 0;
+      html += '<div class="cat-summary-row" style="cursor:default;">' +
+        '<div class="cat-summary-body">' +
+          '<div class="cat-summary-top"><span>' + methodLabels[m.method] + '</span><span>' + formatMoney(m.total) + ' · ' + pct + '%</span></div>' +
+          '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct + '%;background:' + (m.method === "Tarjeta" ? "var(--yellow)" : (m.method === "Transferencia" ? "var(--green)" : "var(--accent)")) + ';"></div></div>' +
+        '</div>' +
+      '</div>';
+    });
+    el.innerHTML = html;
+  }
+
   function renderCategorySummary(){
+    var wrap = document.getElementById("categorySummaryWrap");
+    var icon = document.getElementById("categorySummaryIcon");
+
+    if(!categorySummaryOpen){
+      if(wrap) wrap.classList.add("hidden");
+      if(icon) icon.textContent = "☰";
+      return;
+    }
+    if(wrap) wrap.classList.remove("hidden");
+    if(icon) icon.textContent = "✕";
+
+    renderMethodSummary();
+
     var el = document.getElementById("categorySummary");
     var cats = categoryTotals(currentMonthKey);
     var spent = totalSpent(currentMonthKey);
@@ -1516,12 +1562,6 @@
         }
         var method = e.method || "Efectivo";
         var methodTag = '<span class="tag-badge' + (method === "Tarjeta" ? ' tag-card' : '') + '">' + methodLabels[method] + '</span>';
-        var deferredNote = "";
-        if(method === "Tarjeta"){
-          var billingMonth = shiftMonthKey(monthKeyFromDate(e.date), 1);
-          var bp = billingMonth.split("-");
-          deferredNote = '<span class="tag-badge tag-card">se paga en ' + monthNames[parseInt(bp[1],10)-1] + '</span>';
-        }
         html += '<div class="expense-item">' +
           '<div class="expense-row-item">' +
             '<div class="expense-info">' +
@@ -1529,7 +1569,6 @@
               '<div class="expense-tags">' +
                 '<span class="expense-cat">' + escapeHtml(e.category) + '</span>' +
                 methodTag +
-                deferredNote +
                 tagHtml +
               '</div>' +
             '</div>' +
@@ -1568,6 +1607,12 @@
     renderMonthlyHistory();
   });
 
+  // --- Colapsar/expandir Gastos por categoría ---
+  document.getElementById("categorySummaryToggle").addEventListener("click", function(){
+    categorySummaryOpen = !categorySummaryOpen;
+    renderCategorySummary();
+  });
+
   // --- Buscador del historial ---
   document.getElementById("searchInput").addEventListener("input", function(){
     renderExpenseList();
@@ -1579,22 +1624,6 @@
   dateInput.max = getTodayISO();
 
   var methodInput = document.getElementById("methodInput");
-  var methodHint = document.getElementById("methodHint");
-
-  function updateMethodHint(){
-    if(methodInput.value === "Tarjeta"){
-      var date = dateInput.value || getTodayISO();
-      var billingMonth = shiftMonthKey(monthKeyFromDate(date), 1);
-      var bp = billingMonth.split("-");
-      var label = monthNames[parseInt(bp[1],10)-1] + " " + bp[0];
-      methodHint.innerHTML = "💳 Este gasto se va a contar en el presupuesto de <b>" + label + "</b>.";
-      methodHint.classList.remove("hidden");
-    } else {
-      methodHint.classList.add("hidden");
-    }
-  }
-  methodInput.addEventListener("change", updateMethodHint);
-  dateInput.addEventListener("change", updateMethodHint);
 
   document.getElementById("expenseForm").addEventListener("submit", function(ev){
     ev.preventDefault();
@@ -1629,9 +1658,8 @@
     document.getElementById("catInput").value = "Otros";
     methodInput.value = "Efectivo";
     dateInput.value = getTodayISO();
-    updateMethodHint();
 
-    currentMonthKey = method === "Tarjeta" ? shiftMonthKey(monthKeyFromDate(date), 1) : monthKeyFromDate(date);
+    currentMonthKey = monthKeyFromDate(date);
     render();
     showToast("Gasto agregado");
   });
@@ -1735,7 +1763,10 @@
       active: true,
       completed: false,
       installmentsPaid: 0,
-      totalInstallments: type === "cuotas" ? installments : null
+      totalInstallments: type === "cuotas" ? installments : null,
+      // Una compra en cuotas se hace hoy pero la primera cuota se factura recién el
+      // mes que viene (así funcionan las tarjetas), por eso arranca al mes siguiente.
+      startMonth: type === "cuotas" ? shiftMonthKey(currentMonthKey, 1) : null
     };
     data.recurring.push(newItem);
     saveData(data);
