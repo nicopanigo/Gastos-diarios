@@ -560,6 +560,7 @@
           <option value="Transferencia">🏦 Transferencia</option>
           <option value="Tarjeta">💳 Tarjeta</option>
         </select>
+        <div class="section-hint" id="methodHint" style="margin-top:-4px;"></div>
         <button type="submit" class="primary">Agregar gasto</button>
       </form>
     </div>
@@ -610,7 +611,7 @@
           <option value="Transferencia">🏦 Transferencia</option>
           <option value="Tarjeta">💳 Tarjeta</option>
         </select>
-        <div class="section-hint" style="margin-top:-4px;">El medio de pago es solo informativo. Si es una compra en cuotas, usá "En cuotas" arriba para que se reparta mes a mes.</div>
+        <div class="section-hint" style="margin-top:-4px;">Si es una compra en cuotas (aunque sea en 1 pago), usá "En cuotas" arriba: la primera cuota se cuenta sola para el mes que viene y se va repartiendo mes a mes. El medio de pago acá es solo informativo.</div>
         <button type="submit" class="primary">Agregar gasto fijo</button>
       </form>
       <div id="fixedList"></div>
@@ -784,6 +785,48 @@
 
   var data = loadData();
 
+  // Migración/saneamiento de gastos en cuotas:
+  // 1) El monto: antes se guardaba tal cual lo que se tipeaba como si ya fuera el monto
+  //    de cada cuota, sin dividir por la cantidad de cuotas. Ahora ese campo es el TOTAL
+  //    de la compra y item.amount tiene que ser total/cantidad de cuotas. Se detectan los
+  //    ítems viejos (sin totalAmount) y se corrigen.
+  // 2) El mes: un gasto en cuotas bien generado siempre tiene su primer gasto fechado
+  //    exactamente en item.startMonth. Si falta startMonth o no coincide (quedó mal por
+  //    algún bug anterior), se regenera desde cero arrancando el mes que viene.
+  // En cualquiera de los dos casos se borra lo ya generado para esa cuota y se recalcula.
+  (function migrateLegacyCuotas(){
+    var changed = false;
+    data.recurring.forEach(function(item){
+      if(item.type !== "cuotas") return;
+
+      var amountFixed = false;
+      if(item.totalAmount == null && item.totalInstallments > 0){
+        item.totalAmount = item.amount;
+        item.amount = Math.round((item.totalAmount / item.totalInstallments) * 100) / 100;
+        amountFixed = true;
+      }
+
+      var earliestMonth = null;
+      data.expenses.forEach(function(e){
+        if(e.recurringId !== item.id) return;
+        var mk = monthKeyFromDate(e.date);
+        if(earliestMonth === null || mk < earliestMonth) earliestMonth = mk;
+      });
+
+      var broken = amountFixed || !item.startMonth || (earliestMonth !== null && earliestMonth !== item.startMonth);
+      if(broken){
+        data.expenses = data.expenses.filter(function(e){ return e.recurringId !== item.id; });
+        var todayMonth = monthKeyFromDate(getTodayISO());
+        item.startMonth = shiftMonthKey(todayMonth, 1);
+        item.endMonth = shiftMonthKey(item.startMonth, (item.totalInstallments || 1) - 1);
+        item.installmentsPaid = 0;
+        item.completed = false;
+        changed = true;
+      }
+    });
+    if(changed) saveData(data);
+  })();
+
   var currentMonthKey = monthKeyFromDate(getTodayISO());
 
   var fmt = new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 });
@@ -899,11 +942,22 @@
     return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
 
-  // El medio de pago (efectivo/transferencia/tarjeta) es solo informativo: no cambia el
-  // mes al que se imputa el gasto, porque puede ser débito (plata en el momento) y porque
-  // para compras en cuotas que se pagan más adelante ya está la solapa de Gastos fijos.
+  // Convierte "YYYY-MM" a un número de meses (para poder restar y comparar cuántos
+  // meses hay entre dos monthKey, ej. para saber en qué cuota estamos parados hoy).
+  function monthKeyToIndex(monthKey){
+    var parts = monthKey.split("-");
+    return parseInt(parts[0],10) * 12 + (parseInt(parts[1],10) - 1);
+  }
+
+  // Un gasto cargado con tarjeta se cuenta para el mes siguiente (así se pagan las
+  // tarjetas). Los gastos fijos/cuotas no entran en este ajuste porque ya tienen su
+  // propio mes asignado al generarse (ver generateRecurringForMonth y startMonth).
   function getExpenseMonthKey(e){
-    return monthKeyFromDate(e.date);
+    var mk = monthKeyFromDate(e.date);
+    if(!e.recurringId && e.method === "Tarjeta"){
+      return shiftMonthKey(mk, 1);
+    }
+    return mk;
   }
 
   function getExpensesForMonth(monthKey){
@@ -1449,14 +1503,42 @@
   function renderFixedList(){
     var el = document.getElementById("fixedList");
     var commitmentEl = document.getElementById("fixedCommitment");
+    var todayMonthReal = monthKeyFromDate(getTodayISO());
 
-    var visibleItems = data.recurring.filter(function(item){ return !item.completed; });
+    // Un "fijo" se ve siempre que no esté completado. Una "cuota" se sigue viendo
+    // mientras el mes real de hoy no haya pasado el mes de su última cuota, aunque
+    // ya esté generada de antemano (para no tener que abrir la app mes a mes). Esto
+    // es solo para saber qué mostrar/poder administrar en la lista; es independiente
+    // del mes que se esté mirando con las flechas de arriba.
+    function cuotasEndMonth(item){
+      if(item.endMonth) return item.endMonth;
+      if(item.startMonth && item.totalInstallments) return shiftMonthKey(item.startMonth, item.totalInstallments - 1);
+      return null;
+    }
+    var visibleItems = data.recurring.filter(function(item){
+      if(item.type === "cuotas"){
+        var endMonth = cuotasEndMonth(item);
+        if(endMonth) return todayMonthReal <= endMonth;
+      }
+      return !item.completed;
+    });
 
+    // El "compromiso" sí depende del mes que se está mirando (currentMonthKey): un
+    // "fijo" activo pesa en cualquier mes, pero una cuota solo pesa en los meses entre
+    // su startMonth y su última cuota. Así, al navegar de mes con las flechas, este
+    // número cambia según lo que efectivamente se paga ese mes.
+    function appliesToViewedMonth(item){
+      if(item.type !== "cuotas") return true;
+      if(!item.startMonth) return false;
+      var endMonth = cuotasEndMonth(item);
+      return currentMonthKey >= item.startMonth && (!endMonth || currentMonthKey <= endMonth);
+    }
     var monthlyCommitment = visibleItems
-      .filter(function(item){ return item.active; })
+      .filter(function(item){ return item.active && appliesToViewedMonth(item); })
       .reduce(function(sum, item){ return sum + item.amount; }, 0);
 
-    commitmentEl.innerHTML = "Compromiso mensual activo: <b>" + formatMoney(monthlyCommitment) + "</b>";
+    var viewedMonthLabel = monthNames[parseInt(currentMonthKey.split("-")[1],10)-1] + " " + currentMonthKey.split("-")[0];
+    commitmentEl.innerHTML = "Compromiso en " + viewedMonthLabel + ": <b>" + formatMoney(monthlyCommitment) + "</b>";
 
     if(visibleItems.length === 0){
       el.innerHTML = '<div class="empty-state">Todavía no cargaste gastos fijos.</div>';
@@ -1466,13 +1548,33 @@
     var html = "";
     visibleItems.forEach(function(item){
       var emoji = categoryEmoji[item.category] || "📦";
-      var typeInfo = item.type === "cuotas"
-        ? ("próxima cuota " + (item.installmentsPaid + 1) + "/" + item.totalInstallments)
-        : "todos los meses";
+      var typeInfo = "todos los meses";
+      if(item.type === "cuotas"){
+        var endMonth = cuotasEndMonth(item);
+        if(item.startMonth && currentMonthKey < item.startMonth){
+          var startLabel = monthNames[parseInt(item.startMonth.split("-")[1],10)-1] + " " + item.startMonth.split("-")[0];
+          typeInfo = "empieza en " + startLabel;
+        } else if(endMonth && currentMonthKey > endMonth){
+          var endLabel = monthNames[parseInt(endMonth.split("-")[1],10)-1] + " " + endMonth.split("-")[0];
+          typeInfo = "terminó en " + endLabel;
+        } else {
+          var idx = 1;
+          if(item.startMonth){
+            idx = monthKeyToIndex(currentMonthKey) - monthKeyToIndex(item.startMonth) + 1;
+            if(idx < 1) idx = 1;
+            if(idx > item.totalInstallments) idx = item.totalInstallments;
+          }
+          typeInfo = "cuota " + idx + "/" + item.totalInstallments + " en " + viewedMonthLabel;
+        }
+      }
+      var amountText = item.type === "cuotas"
+        ? (formatMoney(item.amount) + '/mes (total ' + formatMoney(item.totalAmount != null ? item.totalAmount : item.amount * item.totalInstallments) + ')')
+        : (formatMoney(item.amount) + '/mes');
+
       html += '<div class="fixed-row' + (item.active ? '' : ' is-paused') + '" data-id="' + item.id + '">' +
         '<div class="fixed-info">' +
           '<div class="fixed-desc">' + emoji + ' ' + escapeHtml(item.desc) + '</div>' +
-          '<div class="fixed-meta">' + formatMoney(item.amount) + ' · día ' + item.day + ' · ' + typeInfo + '</div>' +
+          '<div class="fixed-meta">' + amountText + ' · día ' + item.day + ' · ' + typeInfo + '</div>' +
         '</div>' +
         '<div class="fixed-actions">' +
           '<button class="toggle-btn' + (item.active ? ' is-active' : '') + '" data-action="toggle" data-id="' + item.id + '">' + (item.active ? 'Activo' : 'Pausado') + '</button>' +
@@ -1562,6 +1664,13 @@
         }
         var method = e.method || "Efectivo";
         var methodTag = '<span class="tag-badge' + (method === "Tarjeta" ? ' tag-card' : '') + '">' + methodLabels[method] + '</span>';
+        var deferredNote = "";
+        if(!e.recurringId && method === "Tarjeta"){
+          var payMonth = getExpenseMonthKey(e);
+          var payParts = payMonth.split("-");
+          var payLabel = monthNames[parseInt(payParts[1],10)-1] + " " + payParts[0];
+          deferredNote = '<span class="tag-badge tag-card">📅 se paga en ' + payLabel + '</span>';
+        }
         html += '<div class="expense-item">' +
           '<div class="expense-row-item">' +
             '<div class="expense-info">' +
@@ -1569,6 +1678,7 @@
               '<div class="expense-tags">' +
                 '<span class="expense-cat">' + escapeHtml(e.category) + '</span>' +
                 methodTag +
+                deferredNote +
                 tagHtml +
               '</div>' +
             '</div>' +
@@ -1625,6 +1735,16 @@
 
   var methodInput = document.getElementById("methodInput");
 
+  function updateMethodHint(){
+    var hintEl = document.getElementById("methodHint");
+    if(!hintEl) return;
+    hintEl.textContent = methodInput.value === "Tarjeta"
+      ? "Este gasto se va a contar para el presupuesto del mes que viene."
+      : "";
+  }
+  methodInput.addEventListener("change", updateMethodHint);
+  updateMethodHint();
+
   document.getElementById("expenseForm").addEventListener("submit", function(ev){
     ev.preventDefault();
     var amount = parseFloat(document.getElementById("amountInput").value);
@@ -1642,7 +1762,7 @@
       return;
     }
 
-    data.expenses.push({
+    var newExpense = {
       id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
       amount: Math.round(amount * 100) / 100,
       desc: desc,
@@ -1650,7 +1770,8 @@
       method: method,
       date: date,
       createdAt: Date.now()
-    });
+    };
+    data.expenses.push(newExpense);
     saveData(data);
 
     document.getElementById("amountInput").value = "";
@@ -1658,8 +1779,9 @@
     document.getElementById("catInput").value = "Otros";
     methodInput.value = "Efectivo";
     dateInput.value = getTodayISO();
+    updateMethodHint();
 
-    currentMonthKey = monthKeyFromDate(date);
+    currentMonthKey = getExpenseMonthKey(newExpense);
     render();
     showToast("Gasto agregado");
   });
@@ -1713,15 +1835,18 @@
   // --- Form: gasto fijo / en cuotas ---
   var fixedTypeInput = document.getElementById("fixedTypeInput");
   var fixedInstallmentsInput = document.getElementById("fixedInstallmentsInput");
+  var fixedAmountInput = document.getElementById("fixedAmountInput");
 
   fixedTypeInput.addEventListener("change", function(){
     var isCuotas = fixedTypeInput.value === "cuotas";
     fixedInstallmentsInput.classList.toggle("hidden", !isCuotas);
     if(isCuotas){
       fixedInstallmentsInput.setAttribute("required", "required");
+      fixedAmountInput.placeholder = "Monto TOTAL de la compra ($)";
     } else {
       fixedInstallmentsInput.removeAttribute("required");
       fixedInstallmentsInput.value = "";
+      fixedAmountInput.placeholder = "Monto por mes ($)";
     }
   });
 
@@ -1752,9 +1877,25 @@
       return;
     }
 
+    // Una compra en cuotas se hace hoy pero la primera cuota se factura recién el
+    // mes que viene (así funcionan las tarjetas), por eso arranca al mes siguiente.
+    // Se calcula siempre a partir del mes real de hoy, no del mes que se esté mirando.
+    var todayMonthForFixed = monthKeyFromDate(getTodayISO());
+    var cuotasStart = type === "cuotas" ? shiftMonthKey(todayMonthForFixed, 1) : null;
+    var cuotasEnd = type === "cuotas" ? shiftMonthKey(cuotasStart, installments - 1) : null;
+
+    // En "cuotas" el monto que se carga es el TOTAL de la compra: cada cuota generada
+    // (y el compromiso mensual activo) usa el total dividido por la cantidad de cuotas.
+    // En "fijo" el monto ya es el que se paga cada mes, no se divide.
+    var totalAmount = Math.round(amount * 100) / 100;
+    var perMonthAmount = type === "cuotas"
+      ? Math.round((totalAmount / installments) * 100) / 100
+      : totalAmount;
+
     var newItem = {
       id: Date.now() + "-" + Math.random().toString(36).slice(2,8),
-      amount: Math.round(amount * 100) / 100,
+      amount: perMonthAmount,
+      totalAmount: type === "cuotas" ? totalAmount : null,
       desc: desc,
       category: category,
       day: day,
@@ -1764,9 +1905,10 @@
       completed: false,
       installmentsPaid: 0,
       totalInstallments: type === "cuotas" ? installments : null,
-      // Una compra en cuotas se hace hoy pero la primera cuota se factura recién el
-      // mes que viene (así funcionan las tarjetas), por eso arranca al mes siguiente.
-      startMonth: type === "cuotas" ? shiftMonthKey(currentMonthKey, 1) : null
+      startMonth: cuotasStart,
+      // Mes de la última cuota: mientras no llegue ese mes (en el calendario real),
+      // el gasto en cuotas se sigue mostrando en la solapa Fijos.
+      endMonth: cuotasEnd
     };
     data.recurring.push(newItem);
     saveData(data);
@@ -1778,6 +1920,7 @@
     document.getElementById("fixedDayInput").value = "";
     document.getElementById("fixedMethodInput").value = "Efectivo";
     fixedTypeInput.value = "fijo";
+    fixedAmountInput.placeholder = "Monto por mes ($)";
     fixedInstallmentsInput.value = "";
     fixedInstallmentsInput.classList.add("hidden");
     fixedInstallmentsInput.removeAttribute("required");
